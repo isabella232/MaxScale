@@ -356,6 +356,7 @@ int dcb_drain_writeq_SSL(DCB *dcb);
 
 /* Airbnb database connection proxy */
 
+void dcb_add_server_persistent_connection_fast(DCB*);
 bool dcb_park_server_connection_pool(DCB*);
 
 /**

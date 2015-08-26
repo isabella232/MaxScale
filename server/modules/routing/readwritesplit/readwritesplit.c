@@ -1620,6 +1620,12 @@ void check_drop_tmp_table(
   rses_prop_tmp = router_cli_ses->rses_properties[RSES_PROP_TYPE_TMPTABLES];
   master_dcb = router_cli_ses->rses_master_ref->bref_dcb;
 
+  if (BREF_IS_IN_POOL(router_cli_ses->rses_master_ref) && master_dcb == NULL)
+  {
+     /* Airproxy has parked master backend connection, do nothing but avoid
+      * tripping on null master_dcb check */
+  }
+  else
   if(master_dcb == NULL || master_dcb->session == NULL)
   {
       skygw_log_write(LE,"[%s] Error: Master server DBC is NULL. "
@@ -1628,9 +1634,17 @@ void check_drop_tmp_table(
       return;
   }
 
-  CHK_DCB(master_dcb);
+  /* Airproxy parked master connection to server persistent connections pool */
+  if (master_dcb != NULL && !BREF_IS_IN_POOL(router_cli_ses->rses_master_ref))
+  {
+      CHK_DCB(master_dcb);
 
-  data = (MYSQL_session*)master_dcb->session->data;
+      data = (MYSQL_session*)master_dcb->session->data;
+  }
+  else
+  {
+      data = (MYSQL_session*)router_cli_ses->client_dcb->data;
+  }
 
   if(data == NULL)
   {
@@ -1712,6 +1726,12 @@ static skygw_query_type_t is_read_tmp_table(
   rses_prop_tmp = router_cli_ses->rses_properties[RSES_PROP_TYPE_TMPTABLES];
   master_dcb = router_cli_ses->rses_master_ref->bref_dcb;
 
+  if (BREF_IS_IN_POOL(router_cli_ses->rses_master_ref) && master_dcb == NULL)
+  {
+      /* Airproxy has parked master backend connection, do nothing but avoid
+       * tripping on null master_dcb check */
+  }
+  else
   if(master_dcb == NULL || master_dcb->session == NULL)
   {
       skygw_log_write(LE,"[%s] Error: Master server DBC is NULL. "
@@ -1719,9 +1739,17 @@ static skygw_query_type_t is_read_tmp_table(
 	      "closed while a query is still being routed.",__FUNCTION__);
       return qtype;
   }
-  CHK_DCB(master_dcb);
 
-  data = (MYSQL_session*)master_dcb->session->data;
+  /* Airproxy parked master connection to server persistent connections pool */
+  if (master_dcb != NULL && !BREF_IS_IN_POOL(router_cli_ses->rses_master_ref))
+  {
+      CHK_DCB(master_dcb);
+
+      data = (MYSQL_session*)master_dcb->session->data;
+  }
+  else {
+      data = (MYSQL_session*)router_cli_ses->client_dcb->data;
+  }
 
   if(data == NULL)
   {
@@ -1814,6 +1842,12 @@ static void check_create_tmp_table(
   rses_prop_tmp = router_cli_ses->rses_properties[RSES_PROP_TYPE_TMPTABLES];
   master_dcb = router_cli_ses->rses_master_ref->bref_dcb;
 
+  if (BREF_IS_IN_POOL(router_cli_ses->rses_master_ref) && master_dcb == NULL)
+  {
+      /* Airproxy has parked master backend connection, do nothing but avoid
+       * tripping on null master_dcb check */
+  }
+  else
   if(master_dcb == NULL || master_dcb->session == NULL)
   {
       skygw_log_write(LE,"[%s] Error: Master server DCB is NULL. "
@@ -1822,9 +1856,17 @@ static void check_create_tmp_table(
       return;
   }
 
-  CHK_DCB(master_dcb);
+  /* Airproxy parked master connection to server persistent connections pool */
+  if (master_dcb != NULL && !BREF_IS_IN_POOL(router_cli_ses->rses_master_ref))
+  {
+      CHK_DCB(master_dcb);
 
-  data = (MYSQL_session*)master_dcb->session->data;
+      data = (MYSQL_session*)master_dcb->session->data;
+  }
+  else
+  {
+      data = (MYSQL_session*)router_cli_ses->client_dcb->data;
+  }
 
   if(data == NULL)
   {
@@ -2139,8 +2181,12 @@ static bool route_single_stmt(
 	/** 
 	 * Read stored master DCB pointer. If master is not set, routing must 
 	 * be aborted 
+	 *
+	 * Airproxy moved master connection to server persistent connections pool,
+	 * and therefore master backend_dcb is NULL but it should be marked IN_POOL.
 	 */
-	if ((master_dcb = rses->rses_master_ref->bref_dcb) == NULL)
+	if ((master_dcb = rses->rses_master_ref->bref_dcb) == NULL &&
+	    !BREF_IS_IN_POOL(rses->rses_master_ref))
 	{
 		char* query_str = modutil_get_query(querybuf);
 		CHK_DCB(master_dcb);
@@ -2529,6 +2575,8 @@ static bool route_single_stmt(
 	else if (TARGET_IS_MASTER(route_target))
 	{
 		DCB* curr_master_dcb = NULL;
+		bool master_bref_in_pool = (master_dcb == NULL &&
+					    BREF_IS_IN_POOL(rses->rses_master_ref));
 		
 		succp = get_dcb(&curr_master_dcb, 
 				rses, 
@@ -2540,6 +2588,13 @@ static bool route_single_stmt(
 		{
 			atomic_add(&inst->stats.n_master, 1);
 			target_dcb = master_dcb;
+		}
+		/* Airproxy will pick up master backend connection from the pool,
+		 * so it is okay to return success now */
+		else if (succp && master_bref_in_pool)
+		{
+		    atomic_add(&inst->stats.n_master, 1);
+		    target_dcb = curr_master_dcb;
 		}
 		else
 		{

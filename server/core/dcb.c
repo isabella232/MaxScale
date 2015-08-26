@@ -3168,6 +3168,29 @@ void dcb_log_ssl_read_error(DCB *dcb, int ssl_errno, int rc)
  */
 
 /**
+ * Add a known reusable backend connection to server persistent connections pool.
+ * The backend DCB should not have been linked with any client session.
+ */
+void dcb_add_server_persistent_connection_fast(DCB *dcb)
+{
+    ss_dassert(dcb->user != NULL && dcb->server != NULL);
+    ss_dassert(dcb->session == NULL);
+    LOGIF(LD, (skygw_log_write(
+        LOGFILE_DEBUG,
+        "%lu [dcb_add_server_persistent_connection_fast] "
+        "Adding DCB %p to server %p persistent pool, user %s.",
+        pthread_self(),
+        dcb, dcb->server != NULL ? dcb->server : 0, dcb->user)));
+    dcb->persistentstart = time(NULL);
+    spinlock_acquire(&dcb->server->persistlock);
+    dcb->nextpersistent = dcb->server->persistent;
+    dcb->server->persistent = dcb;
+    spinlock_release(&dcb->server->persistlock);
+    atomic_add(&dcb->server->stats.n_persistent, 1);
+    atomic_add(&dcb->server->stats.n_current, -1);
+}
+
+/**
  * Park a backend connection in the server persistent connections pool.
  */
 bool dcb_park_server_connection_pool(DCB *dcb)
