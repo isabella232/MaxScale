@@ -1805,8 +1805,9 @@ dcb_maybe_add_persistent(DCB *dcb)
     {
         LOGIF(LD, (skygw_log_write(
             LOGFILE_DEBUG,
-            "%lu [dcb_maybe_add_persistent] Adding DCB to persistent pool, user %s.\n",
+            "%lu [dcb_maybe_add_persistent] Adding DCB %p to server %p persistent pool, user %s.\n",
             pthread_self(),
+            dcb, dcb->server != NULL ? dcb->server : 0,
             user)));
         dcb->user = strdup(user);
         dcb->persistentstart = time(NULL);
@@ -1823,10 +1824,11 @@ dcb_maybe_add_persistent(DCB *dcb)
     {
       LOGIF(LD, (skygw_log_write(
             LOGFILE_DEBUG,
-            "%lu [dcb_maybe_add_persistent] Not adding DCB %p to persistent pool, user %s, "
+            "%lu [dcb_maybe_add_persistent] Not adding DCB %p to server %p persistent pool, user %s, "
             "max for pool %d, error handle called %s, hung flag %s, pool count %d.\n",
             pthread_self(),
             dcb,
+	    dcb->server ? dcb->server : 0,
             user ? user : "",
             (dcb->server && dcb->server->persistpoolmax) ? dcb->server->persistpoolmax : 0,
             dcb->dcb_errhandle_called ? "true" : "false",
@@ -2720,6 +2722,11 @@ int
 dcb_persistent_clean_count(DCB *dcb, bool cleanall)
 {
     int count = 0;
+	LOGIF(LD, (skygw_log_write(
+                LOGFILE_DEBUG,
+                    "%lu [dcb_persistent_clean_count] cleanall %s ",
+                    pthread_self(),
+                    cleanall ? "true" : "false")));
     if (dcb && dcb->server)
     {
         SERVER *server = dcb->server;
@@ -2738,6 +2745,14 @@ dcb_persistent_clean_count(DCB *dcb, bool cleanall)
 		|| count >= server->persistpoolmax 
 		|| (time(NULL) - persistentdcb->persistentstart) > server->persistmaxtime)
             {
+		LOGIF(LD, (skygw_log_write(
+                    LOGFILE_DEBUG,
+                    "%lu [dcb_persistent_clean_count] DCB %p server %p server pool size %d  "
+                    "DCB error handler called %s persistent connection duration %s",
+                    pthread_self(),
+                    persistentdcb, persistentdcb->server ? persistentdcb->server : 0, persistentdcb->server->persistpoolmax,
+		    persistentdcb-> dcb_errhandle_called ? "true" : "false",
+                    (time(NULL) - persistentdcb->persistentstart) > server->persistmaxtime ? " long" : "ok")));
                 /* Remove from persistent pool */
                 if (previousdcb) {
                     previousdcb->nextpersistent = nextdcb;
@@ -2763,6 +2778,11 @@ dcb_persistent_clean_count(DCB *dcb, bool cleanall)
         /** Call possible callback for this DCB in case of close */
         while (disposals)
         {
+	    LOGIF(LD, (skygw_log_write(
+                    LOGFILE_DEBUG,
+                    "%lu [dcb_persistent_clean_count] dispose DCB %p server %p",
+		    pthread_self(),
+		    disposals, disposals->server ? disposals->server : 0)));
             nextdcb = disposals->nextpersistent;
             dcb_close_finish(disposals);
             dcb_close(disposals);

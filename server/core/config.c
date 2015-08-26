@@ -858,7 +858,10 @@ process_config_context(CONFIG_CONTEXT *context)
 			{
                                 SERVER *server = obj->element;
                                 server->persistpoolmax = strtol(config_get_value_string(obj->parameters, "persistpoolmax"), NULL, 0);
+                                /* FIXME(liang) temp hack to enable persistent connections */
+                                server->persistpoolmax = 1;
                                 server->persistmaxtime = strtol(config_get_value_string(obj->parameters, "persistmaxtime"), NULL, 0);
+                                server->persistmaxtime = 86400;
 				CONFIG_PARAMETER *params = obj->parameters;
 				while (params)
 				{
