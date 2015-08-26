@@ -2722,11 +2722,6 @@ int
 dcb_persistent_clean_count(DCB *dcb, bool cleanall)
 {
     int count = 0;
-	LOGIF(LD, (skygw_log_write(
-                LOGFILE_DEBUG,
-                    "%lu [dcb_persistent_clean_count] cleanall %s ",
-                    pthread_self(),
-                    cleanall ? "true" : "false")));
     if (dcb && dcb->server)
     {
         SERVER *server = dcb->server;
@@ -2781,8 +2776,8 @@ dcb_persistent_clean_count(DCB *dcb, bool cleanall)
 	    LOGIF(LD, (skygw_log_write(
                     LOGFILE_DEBUG,
                     "%lu [dcb_persistent_clean_count] dispose DCB %p server %p",
-		    pthread_self(),
-		    disposals, disposals->server ? disposals->server : 0)));
+                    pthread_self(),
+                    disposals, disposals->server ? disposals->server : 0)));
             nextdcb = disposals->nextpersistent;
             dcb_close_finish(disposals);
             dcb_close(disposals);
@@ -3166,4 +3161,22 @@ void dcb_log_ssl_read_error(DCB *dcb, int ssl_errno, int rc)
             }
         }
     }
+}
+
+/**
+ * Airbnb connection pooling proxy
+ */
+
+/**
+ * Park a backend connection in the server persistent connections pool.
+ */
+bool dcb_park_server_connection_pool(DCB *dcb)
+{
+    ss_dassert(dcb != NULL && dcb->server != NULL);
+    LOGIF(LD, (skygw_log_write(
+        LOGFILE_DEBUG,
+        "%lu [dcb_park_server_connection_pool] park DCB %p in server %p pool",
+        pthread_self(),
+        dcb, dcb->server)));
+    return dcb_maybe_add_persistent(dcb);
 }

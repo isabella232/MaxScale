@@ -82,6 +82,7 @@ struct dcb;
 	 *	listen		Create a listener for the protocol
 	 *	auth		Authentication entry point
      *	session		Session handling entry point
+	 *	pool		Connection pool callback
 	 * @endverbatim
 	 *
 	 * This forms the "module object" for protocol modules within the gateway.
@@ -100,6 +101,7 @@ typedef struct gw_protocol {
 	int		(*listen)(struct dcb *, char *);
 	int		(*auth)(struct dcb *, struct server *, struct session *, GWBUF *);
 	int		(*session)(struct dcb *, void *);
+	int		(*pool)(struct dcb *);
 } GWPROTOCOL;
 
 /**
@@ -273,6 +275,8 @@ typedef struct dcb {
     SSL* ssl; /*< SSL struct for connection */
     int             dcb_port;       /**< port of target server */
     skygw_chk_t     dcb_chk_tail;
+	void           *rses_brefs; /* connection pooling backend_ref */
+	int             rses_bref_index; /* backend_ref index */
 } DCB;
 
 /**
@@ -350,6 +354,9 @@ int dcb_write_SSL(DCB *dcb,GWBUF *queue);
 int dcb_read_SSL(DCB   *dcb,GWBUF **head);
 int dcb_drain_writeq_SSL(DCB *dcb);
 
+/* Airbnb database connection proxy */
+
+bool dcb_park_server_connection_pool(DCB*);
 
 /**
  * DCB flags values

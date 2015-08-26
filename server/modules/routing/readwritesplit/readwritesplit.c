@@ -316,6 +316,9 @@ static ROUTER_INSTANCE* instances;
 static int hashkeyfun(void* key);
 static int hashcmpfun (void *, void *);
 
+static int park_connection(DCB *backend_dcb);
+static bool unpark_connection(DCB** p_dcb, ROUTER_CLIENT_SES* rses, backend_ref_t* bref);
+
 static int hashkeyfun(
 		void* key)
 {
@@ -1001,13 +1004,16 @@ static void closeSession(
                         /** Close those which had been connected */
                         if (BREF_IS_IN_USE(bref))
                         {
+			        /* if bref is marked IN_POOL, its dcb is NULL */
+                                if (!BREF_IS_IN_POOL(bref)) {
                                 CHK_DCB(dcb);
+                                }
 #if defined(SS_DEBUG)
 				/**
 				 * session must be moved to SESSION_STATE_STOPPING state before
 				 * router session is closed.
 				 */
-				if (dcb->session != NULL)
+				if (!BREF_IS_IN_POOL(bref) && dcb->session != NULL)
 				{
 					ss_dassert(dcb->session->state == SESSION_STATE_STOPPING);
 				}
@@ -1019,10 +1025,13 @@ static void closeSession(
                                 }
                                 bref_clear_state(bref, BREF_IN_USE);
                                 bref_set_state(bref, BREF_CLOSED);
-                                /**
-                                 * closes protocol and dcb
-                                 */
-                                dcb_close(dcb);
+                                /* skip closing if this backend ref not linked with any backend connection */
+                                if (!BREF_IS_IN_POOL(bref)) {
+                                    /**
+                                     * closes protocol and dcb
+                                    */
+                                    dcb_close(dcb);
+                                }
                                 /** decrease server current connection counters */
                                 atomic_add(&bref->bref_backend->backend_conn_count, -1);
                         }
@@ -1173,6 +1182,8 @@ static bool get_dcb(
 					SERVER_IS_RELAY_SERVER(b->backend_server) ||
 					SERVER_IS_MASTER(b->backend_server)))
 			{
+				/* FIXME(liang) Airproxy picks connection from the connection pool */	
+				ss_dassert(backend_ref[i].bref_dcb != NULL);
 				*p_dcb = backend_ref[i].bref_dcb;
 				succp = true; 
 				ss_dassert(backend_ref[i].bref_dcb->state != DCB_STATE_ZOMBIE);
@@ -1283,6 +1294,10 @@ static bool get_dcb(
 		/** Assign selected DCB's pointer value */
 		if (candidate_bref != NULL)
 		{
+			/* Airproxy picks up backend connection from the pool */
+			if (candidate_bref->bref_dcb == NULL && BREF_IS_IN_POOL(candidate_bref)) {
+			    unpark_connection(&candidate_bref->bref_dcb, rses, candidate_bref);
+			}
 			*p_dcb = candidate_bref->bref_dcb;
 		}
 		
@@ -1297,6 +1312,10 @@ static bool get_dcb(
 		if (BREF_IS_IN_USE(master_bref) &&
 			SERVER_IS_MASTER(master_bref->bref_backend->backend_server))
 		{
+			/* Airproxy picks up master backend connection from the pool */
+			if (master_bref->bref_dcb == NULL && BREF_IS_IN_POOL(master_bref)) {
+			    unpark_connection(&master_bref->bref_dcb, rses, master_bref);
+			}
 			*p_dcb = master_bref->bref_dcb;
 			succp = true;
 			/** if bref is in use DCB should not be closed */
@@ -3401,6 +3420,14 @@ static bool select_connect_backend_servers(
                                                         DCB_REASON_NOT_RESPONDING,
                                                         &router_handle_state_switch,
                                                         (void *)&backend_ref[i]);
+                                                /* register router specific connection
+                                                 * pooling callback */
+                                                backend_ref[i].bref_dcb->func.pool = park_connection;  
+                                                /* register router session backend
+                                                 * refererence back pointer */
+                                                backend_ref[i].bref_dcb->rses_brefs =
+                                                    backend_ref;
+                                                backend_ref[i].bref_dcb->rses_bref_index = i;
                                                 backend_ref[i].bref_state = 0;
                                                 bref_set_state(&backend_ref[i], 
                                                                BREF_IN_USE);
@@ -3460,6 +3487,14 @@ static bool select_connect_backend_servers(
                                                 DCB_REASON_NOT_RESPONDING,
                                                 &router_handle_state_switch,
                                                 (void *)&backend_ref[i]);
+
+                                        /* register router specific connection
+                                         * pooling callback */
+                                        backend_ref[i].bref_dcb->func.pool = park_connection;
+                                        /* register router session backend
+                                         * refererence back pointer */
+                                        backend_ref[i].bref_dcb->rses_brefs = backend_ref;
+                                        backend_ref[i].bref_dcb->rses_bref_index = i;
 
                                         backend_ref[i].bref_state = 0;
                                         bref_set_state(&backend_ref[i], 
@@ -5480,6 +5515,91 @@ static backend_ref_t* get_root_master_bref(
 	return candidate_bref;
 }
 
+/**
+ * Airbnb connection proxy read write split router specific callbacks
+ */
+ 
+static int park_connection(DCB *backend_dcb)
+{
+    int rc = 0;
+    if (backend_dcb->state == DCB_STATE_POLLING) {
+        SESSION *session = NULL;
+        backend_ref_t *backend_refs = (backend_ref_t *)backend_dcb->rses_brefs;
+
+        ss_dassert(BREF_IS_IN_USE(&backend_refs[backend_dcb->rses_bref_index]));
+        ss_dassert(backend_dcb->session != NULL);
+        ss_dassert(backend_dcb->state == DCB_STATE_POLLING);
+        /* add backend DCB to server persistent connections pool */
+        if (dcb_park_server_connection_pool(backend_dcb)) {
+            backend_ref_t *bref = &backend_refs[backend_dcb->rses_bref_index];
+            /* mark router session backend ref as IN_POOL and reset DCB pointer */
+            bref_set_state(bref, BREF_IN_POOL);
+            bref->bref_dcb = NULL;
+            /* clear router session backend reference back pointer, it will be
+             * set when a backend_dcb is chosen to link with a client session */
+            backend_dcb->rses_brefs = NULL;
+            backend_dcb->rses_bref_index = -1;
+            rc = 1;
+        }
+    }
+ 
+    return rc;
+}
+
+static bool unpark_connection(DCB **p_dcb, ROUTER_CLIENT_SES *rses, backend_ref_t *bref)
+{
+    SESSION *client_session = NULL;
+    SERVER *server = NULL;
+    DCB *dcb = NULL;
+
+    if (rses->client_dcb == NULL)
+        return false;
+    if (bref == NULL || bref->bref_backend == NULL || p_dcb == NULL)
+        return false;
+
+    server = bref->bref_backend->backend_server;
+    ss_dassert(server != NULL);
+    client_session = rses->client_dcb->session;
+    ss_dassert(client_session != NULL);
+
+    dcb = server_get_persistent(server,
+                                rses->client_dcb->user,
+                                server->protocol);
+    /* FIXME(liang) manual test assume available dcb, remove when testing more */
+    ss_dassert(dcb != NULL);
+    if (dcb == NULL)
+        return false;
+
+    LOGIF(LD, (skygw_log_write(
+        LOGFILE_DEBUG,
+        "%lu [unpark_connection] pick up DCP %p for session %p query routing",
+        pthread_self(), dcb, client_session)));
+
+    if (!session_link_dcb(client_session, dcb)) {
+        LOGIF(LD, (skygw_log_write(
+            LOGFILE_DEBUG,
+            "%lu [unpark_connection] Failed to link to session %p, the "
+            "session has been removed.\n",
+            pthread_self(), client_session)));
+        /* park the connection back in server pool */
+        dcb_add_server_persistent_connection_fast(dcb);
+        // FIXME(liang) distinguish disconnected client_session from no dcb avail
+        return false;
+    }
+
+    /* dcb->user was cleared when added to persistent connections pool */
+    dcb->user = strdup(client_session->client->user);
+
+    // FIXME(liang) assume master and pass bref_index
+
+    /* link the backend_dcb with router session backend ref */
+    dcb->rses_brefs = rses->rses_backend_ref;
+    dcb->rses_bref_index = bref - rses->rses_backend_ref;
+    bref->bref_dcb = dcb;
+    bref_clear_state(bref, BREF_IN_POOL);
+
+    return true;
+}
 
 
 

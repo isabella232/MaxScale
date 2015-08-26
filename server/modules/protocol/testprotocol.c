@@ -68,7 +68,8 @@ static GWPROTOCOL MyObject = {
 	test_close,				/**< Close			 */
 	test_listen,				/**< Create a listener		 */
 	test_auth,					/**< Authentication		 */
-	test_session					/**< Session			 */
+	test_session,					/**< Session			 */
+	NULL                                    /**< Airproxy connections pool */
 	};
 
 

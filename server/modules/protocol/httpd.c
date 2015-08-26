@@ -84,7 +84,8 @@ static GWPROTOCOL MyObject = {
 	httpd_close,				/**< Close			 */
 	httpd_listen,				/**< Create a listener		 */
 	NULL,					/**< Authentication		 */
-	NULL					/**< Session			 */
+	NULL,					/**< Session			 */
+	NULL                                    /**< Airproxy connections pool   */
 	};
 
 /**

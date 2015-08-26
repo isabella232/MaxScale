@@ -56,7 +56,8 @@ typedef enum bref_state {
         BREF_WAITING_RESULT   = 0x02, /*< for session commands only */
         BREF_QUERY_ACTIVE     = 0x04, /*< for other queries */
         BREF_CLOSED           = 0x08,
-        BREF_SESCMD_FAILED    = 0x10 /*< Backend references that should be dropped */
+        BREF_SESCMD_FAILED    = 0x10, /*< Backend references that should be dropped */
+	BREF_IN_POOL          = 0x20  /*< Backend connection in server connection pool */
 } bref_state_t;
 
 #define BREF_IS_NOT_USED(s)         ((s)->bref_state & ~BREF_IN_USE)
@@ -65,6 +66,7 @@ typedef enum bref_state {
 #define BREF_IS_QUERY_ACTIVE(s)     ((s)->bref_state & BREF_QUERY_ACTIVE)
 #define BREF_IS_CLOSED(s)           ((s)->bref_state & BREF_CLOSED)
 #define BREF_HAS_FAILED(s)           ((s)->bref_state & BREF_SESCMD_FAILED)
+#define BREF_IS_IN_POOL(s)          ((s)->bref_state & BREF_IN_POOL)
 
 typedef enum backend_type_t {
         BE_UNDEFINED=-1, 

@@ -93,7 +93,8 @@ static GWPROTOCOL MyObject = {
 	gw_backend_close,			/* Close			 */
 	NULL,					/* Listen			 */
 	gw_change_user,				/* Authentication		 */
-        NULL                                    /* Session                       */
+        NULL,                                   /* Session                       */
+	NULL                                    /* Airproxy connection pool      */
 };
 
 /*
@@ -165,6 +166,7 @@ static int gw_read_backend_event(DCB *dcb) {
 	MySQLProtocol *backend_protocol = NULL;
 	MYSQL_session *current_session = NULL;
         int            rc = 0;
+	bool park_connection = false;
 
         CHK_DCB(dcb);        
         if (!dcb->session && dcb->persistentstart)
@@ -588,6 +590,10 @@ static int gw_read_backend_event(DCB *dcb) {
                                                 session->router_session,
                                                 read_buffer,
                                                 dcb);
+                                        /* FIXME(liang) check if server enabled pooling */
+                                        if (backend_protocol->protocol_auth_state == MYSQL_IDLE) {
+                                            park_connection = true;
+                                        }
 					rc = 1;
 				}
 				goto return_rc;
@@ -606,6 +612,12 @@ static int gw_read_backend_event(DCB *dcb) {
         }
         
 return_rc:
+        /* FIXME(liang) server should enabled pooling, session transaction finishes */
+        if (park_connection) {
+            ss_dassert(dcb != NULL && dcb->func.pool != NULL);
+            dcb->func.pool(dcb);
+        }
+ 
         return rc;
 
 return_with_lock:
