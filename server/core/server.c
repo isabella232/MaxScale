@@ -90,6 +90,9 @@ SERVER 	*server;
         server->persistmax = 0;
         spinlock_init(&server->persistlock);
 
+	/* Airbnb connection pool */
+	server->pool_stats.n_pool_conns = 0;
+
 	spinlock_acquire(&server_spin);
 	server->next = allServers;
 	allServers = server;

@@ -72,6 +72,13 @@ typedef struct {
 } SERVER_STATS;
 
 /**
+ * Airbnb connection pool statistics structure
+ */
+typedef struct {
+	int        n_pool_conns; /**< Number of connections in pool */
+} CONN_POOL_STATS;
+
+/**
  * The SERVER structure defines a backend server. Each server has a name
  * or IP address for the server, a port that the server listens on and
  * the name of a protocol module that is loaded to implement the protocol
@@ -105,6 +112,7 @@ typedef struct server {
         long            persistpoolmax; /**< Maximum size of persistent connections pool */
         long            persistmaxtime; /**< Maximum number of seconds connection can live */
         int             persistmax;     /**< Maximum pool size actually achieved since startup */
+        CONN_POOL_STATS pool_stats;     /**< Connection pool statistics */
 #if defined(SS_DEBUG)
         skygw_chk_t     server_chk_tail;
 #endif

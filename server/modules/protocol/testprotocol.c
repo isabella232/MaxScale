@@ -69,7 +69,8 @@ static GWPROTOCOL MyObject = {
 	test_listen,				/**< Create a listener		 */
 	test_auth,					/**< Authentication		 */
 	test_session,					/**< Session			 */
-	NULL                                    /**< Airproxy connections pool */
+	NULL,                                   /**< Airproxy connections pool */
+	NULL                                    /**< Airproxy connection auth callback */
 	};
 
 

@@ -102,6 +102,7 @@ typedef struct gw_protocol {
 	int		(*auth)(struct dcb *, struct server *, struct session *, GWBUF *);
 	int		(*session)(struct dcb *, void *);
 	int		(*pool)(struct dcb *);
+	int             (*pool_auth_cb)(struct dcb *);
 } GWPROTOCOL;
 
 /**
@@ -275,8 +276,9 @@ typedef struct dcb {
     SSL* ssl; /*< SSL struct for connection */
     int             dcb_port;       /**< port of target server */
     skygw_chk_t     dcb_chk_tail;
-	void           *rses_brefs; /* connection pooling backend_ref */
-	int             rses_bref_index; /* backend_ref index */
+	void           *rses_brefs; /**< connection pooling backend_ref */
+	int             rses_bref_index; /**< backend_ref index */
+	bool            in_conn_auth_phase; /**< connection in authentication phase */
 } DCB;
 
 /**

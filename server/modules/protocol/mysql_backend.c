@@ -94,7 +94,8 @@ static GWPROTOCOL MyObject = {
 	NULL,					/* Listen			 */
 	gw_change_user,				/* Authentication		 */
         NULL,                                   /* Session                       */
-	NULL                                    /* Airproxy connection pool      */
+	NULL,                                   /* Airproxy connection pool      */
+	NULL                                    /* Airproxy connection auth callback */
 };
 
 /*

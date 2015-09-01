@@ -318,6 +318,7 @@ static int hashcmpfun (void *, void *);
 
 static int park_connection(DCB *backend_dcb);
 static bool unpark_connection(DCB** p_dcb, ROUTER_CLIENT_SES* rses, backend_ref_t* bref);
+static void init_connection_pool_dcb(DCB* backend_dcb, backend_ref_t *brefs, int bref_idx);
 
 static int hashkeyfun(
 		void* key)
@@ -3477,12 +3478,8 @@ static bool select_connect_backend_servers(
                                                         (void *)&backend_ref[i]);
                                                 /* register router specific connection
                                                  * pooling callback */
-                                                backend_ref[i].bref_dcb->func.pool = park_connection;  
-                                                /* register router session backend
-                                                 * refererence back pointer */
-                                                backend_ref[i].bref_dcb->rses_brefs =
-                                                    backend_ref;
-                                                backend_ref[i].bref_dcb->rses_bref_index = i;
+						init_connection_pool_dcb(backend_ref[i].bref_dcb,
+									 backend_ref, i);
                                                 backend_ref[i].bref_state = 0;
                                                 bref_set_state(&backend_ref[i], 
                                                                BREF_IN_USE);
@@ -3545,11 +3542,8 @@ static bool select_connect_backend_servers(
 
                                         /* register router specific connection
                                          * pooling callback */
-                                        backend_ref[i].bref_dcb->func.pool = park_connection;
-                                        /* register router session backend
-                                         * refererence back pointer */
-                                        backend_ref[i].bref_dcb->rses_brefs = backend_ref;
-                                        backend_ref[i].bref_dcb->rses_bref_index = i;
+					init_connection_pool_dcb(backend_ref[i].bref_dcb,
+								 backend_ref, i);
 
                                         backend_ref[i].bref_state = 0;
                                         bref_set_state(&backend_ref[i], 
@@ -5573,7 +5567,21 @@ static backend_ref_t* get_root_master_bref(
 /**
  * Airbnb connection proxy read write split router specific callbacks
  */
- 
+
+static void
+unlink_dcb_backend_ref(DCB *backend_dcb)
+{
+    backend_ref_t *backend_refs = (backend_ref_t *)backend_dcb->rses_brefs;
+    backend_ref_t *bref = &backend_refs[backend_dcb->rses_bref_index];
+    /* mark router session backend ref as IN_POOL and reset DCB pointer */
+    bref_set_state(bref, BREF_IN_POOL);
+    bref->bref_dcb = NULL;
+    /* clear router session backend reference back pointer, it will be
+     * set when a backend_dcb is chosen to link with a client session */
+    backend_dcb->rses_brefs = NULL;
+    backend_dcb->rses_bref_index = -1;
+}
+
 static int park_connection(DCB *backend_dcb)
 {
     int rc = 0;
@@ -5656,9 +5664,39 @@ static bool unpark_connection(DCB **p_dcb, ROUTER_CLIENT_SES *rses, backend_ref_
     return true;
 }
 
+/**
+ * This callback is to terminate a server connection that had been used to complete
+ * client connection authentication with backend server. A new client connection
+ * always complete authentication with backend server, and it may create a backend
+ * connection to MySQL server for that. Upon completion of authentication, it will
+ * either park the connection in the pool or close it if the pool has been fully
+ * bootstraped.
+ */
+static int
+server_backend_auth_connection_close_cb(DCB *backend_dcb)
+{
+    LOGIF(LD, (skygw_log_write(
+        LOGFILE_DEBUG,
+        "%lu [RWSplit::server_backend_auth_connection_close_cb] "
+        "close connection auth DCB %p for server %p",
+        pthread_self(), backend_dcb, backend_dcb->server)));
+    session_unlink_dcb(backend_dcb->session, backend_dcb);
+    unlink_dcb_backend_ref(backend_dcb);
+    dcb_close(backend_dcb);
+    return 0;
+}
 
-
-
+static void
+init_connection_pool_dcb(DCB *backend_dcb, backend_ref_t *backend_refs,
+			 int backend_ref_idx)
+{
+    /* register router specific connection pooling callback */
+    backend_dcb->func.pool = park_connection;
+    backend_dcb->func.pool_auth_cb = server_backend_auth_connection_close_cb;
+    /* register router session backend refererence back pointer */
+    backend_dcb->rses_brefs = backend_refs;
+    backend_dcb->rses_bref_index = backend_ref_idx;
+}
 
 
 
