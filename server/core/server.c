@@ -984,7 +984,9 @@ server_clean_connection_pool_queue(SERVER *server)
          q != NULL; q = next)
     {
         next = q->next;
-        free(q);
+        /* queue item has sole ownership of the querybuf */
+        gwbuf_free(q->query_buf);
+        q->next = NULL;
     }
     server->conn_queue_head = server->conn_queue_tail = NULL;
     server->pool_stats.n_queue_items = 0;

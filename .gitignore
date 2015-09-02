@@ -51,3 +51,6 @@ CMakeFiles/*
 */*/*/*/CMakeFiles/*
 *.cmake
 Makefile
+
+# Cscope
+cscope.files

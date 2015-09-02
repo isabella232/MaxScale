@@ -316,6 +316,7 @@ static ROUTER_INSTANCE* instances;
 static int hashkeyfun(void* key);
 static int hashcmpfun (void *, void *);
 
+static void init_router_session_queue_item(ROUTER_CLIENT_SES *rses);
 static void init_connection_pool_dcb(DCB* backend_dcb, backend_ref_t *brefs, int bref_idx);
 static int try_server_connection(ROUTER_CLIENT_SES *rses, backend_ref_t *bref);
 static int enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf);
@@ -927,6 +928,8 @@ static void* newSession(
         client_rses->rses_backend_ref  = backend_ref;
         client_rses->rses_nbackends    = router_nservers; /*< # of backend servers */
         client_rses->rses_bref_queued  = NULL; /* Airproxy pool queued */
+	/* initialize embedded POOL_QUEUE_ITEM to point to this router session */
+	init_router_session_queue_item(client_rses);
 
 	if(client_rses->rses_config.rw_max_slave_conn_percent)
 	{
@@ -5600,6 +5603,14 @@ static backend_ref_t* get_root_master_bref(
  */
 
 static void
+init_router_session_queue_item(ROUTER_CLIENT_SES *rses)
+{
+    rses->rses_queue_item.router_session = rses;
+    rses->rses_queue_item.query_buf = NULL;
+    rses->rses_queue_item.next = NULL;
+}
+
+static void
 link_dcb_backend_ref(DCB *backend_dcb, ROUTER_CLIENT_SES *rses, backend_ref_t *bref)
 {
     SESSION *client_session = rses->client_dcb->session;
@@ -5648,7 +5659,7 @@ park_connection(DCB *backend_dcb)
     if (dcb_park_server_connection_pool(backend_dcb)) {
 	unlink_dcb_backend_ref(backend_dcb);
         rc = 1;
-    } 
+    }
     return rc;
 }
 
@@ -5717,24 +5728,20 @@ static int
 enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf)
 {
     SERVER *server = NULL;
-    POOL_QUEUE_ITEM *queue_item = NULL;
+    POOL_QUEUE_ITEM *queue_item = &rses->rses_queue_item;
 
     ss_dassert(rses->rses_bref_queued != NULL);
     server = rses->rses_bref_queued->bref_backend->backend_server;
     ss_dassert(server != NULL);
-
-    if ((queue_item = calloc(1, sizeof(POOL_QUEUE_ITEM))) == NULL) {
-        return -1;
-    }
 
     LOGIF(LD, (skygw_log_write(
             LOGFILE_DEBUG,
             "%lu [enqueue_server_connection_pool] router session %p to server %p "
             "for client session %p client_dcb %p",
             pthread_self(), rses, server, rses->client_dcb->session, rses->client_dcb)));
-    queue_item->router_session = rses;
+    ss_dassert(queue_item->router_session == rses);
+    ss_dassert(queue_item->next == NULL);
     queue_item->query_buf = querybuf;
-    queue_item->next = NULL;
     server_enqueue_connection_pool_request(server, queue_item);
 
     return 0;
@@ -5777,7 +5784,6 @@ forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb
         bref_set_state(bref, BREF_WAITING_RESULT);
         rc = true;
     } else {
-        gwbuf_free(querybuf);
         LOGIF((LE|LT), (skygw_log_write_flush(
             LOGFILE_ERROR, "Error : Routing query failed.")));
         rc = false;
@@ -5824,9 +5830,9 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
             /* FIXME(liang) must send error to client if query routing failed */
             forward_request_query((ROUTER_CLIENT_SES *)req->router_session,
                                 (GWBUF *)req->query_buf, backend_dcb);
-            /* FIXME(liang) replace malloc with embedded POOL_QUEUE_ITEM
-             * free the connection pool queue item */
-            free(req);
+            /* clear the embedded POOL_QUEUE_ITEM, and query_buf should have
+	     * been consumed and therefore no need of gwbuf_free here */
+            req->query_buf = req->next = NULL;
             park_dcb = false;
         }
     }
