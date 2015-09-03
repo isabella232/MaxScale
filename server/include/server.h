@@ -118,6 +118,7 @@ typedef struct server {
         int             persistmax;     /**< Maximum pool size actually achieved since startup */
 
         CONN_POOL_STATS pool_stats;     /**< Connection pool statistics */
+        long            conn_pool_size; /**< Connection pool size */
         POOL_QUEUE_ITEM *conn_queue_head; /**< List of client query router
                                                sessions waiting for backend connection  */
         POOL_QUEUE_ITEM *conn_queue_tail;
@@ -201,6 +202,11 @@ typedef struct server {
 
 #define SERVER_IS_RELAY_SERVER(server) \
         (((server)->status & (SERVER_RUNNING|SERVER_MASTER|SERVER_SLAVE|SERVER_MAINT)) == (SERVER_RUNNING|SERVER_MASTER|SERVER_SLAVE))
+
+/**
+ * Is the server using connection pool
+ */
+#define SERVER_USE_CONN_POOL(server) (server->conn_pool_size > 0)
 
 extern SERVER	*server_alloc(char *, char *, unsigned short);
 extern int	server_free(SERVER *);

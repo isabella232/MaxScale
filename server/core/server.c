@@ -95,6 +95,7 @@ SERVER 	*server;
 	/* Airproxy connection pool */
 	server->pool_stats.n_pool_conns = 0;
 	server->pool_stats.n_queue_items = 0;
+	server->conn_pool_size = 0;
 	server->conn_queue_head = server->conn_queue_tail = NULL;
 	spinlock_init(&server->conn_queue_lock);
 
@@ -389,6 +390,8 @@ char	*stat;
 						server->persistpoolmax);
                     dcb_printf(dcb, "\tPersistent max time (secs):          %d\n",
 						server->persistmaxtime);
+		    dcb_printf(dcb, "\tConnection pool size limit:          %d\n",
+						server->conn_pool_size);
                 }
                 server = server->next;
 	}
