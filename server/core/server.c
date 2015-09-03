@@ -57,6 +57,8 @@ static SERVER	*allServers = NULL;
 
 static void spin_reporter(void *, char *, int);
 
+static void server_clean_connection_pool_queue(SERVER *);
+
 /**
  * Allocate a new server withn the gateway
  *
@@ -90,8 +92,11 @@ SERVER 	*server;
         server->persistmax = 0;
         spinlock_init(&server->persistlock);
 
-	/* Airbnb connection pool */
+	/* Airproxy connection pool */
 	server->pool_stats.n_pool_conns = 0;
+	server->pool_stats.n_queue_items = 0;
+	server->conn_queue_head = server->conn_queue_tail = NULL;
+	spinlock_init(&server->conn_queue_lock);
 
 	spinlock_acquire(&server_spin);
 	server->next = allServers;
@@ -140,6 +145,9 @@ SERVER *server;
 		free(tofreeserver->server_string);
         if (tofreeserver->persistent)
             dcb_persistent_clean_count(tofreeserver->persistent, true);
+	if (tofreeserver->conn_queue_head != NULL) {
+            server_clean_connection_pool_queue(tofreeserver);
+	}
 	free(tofreeserver);
 	return 1;
 }
@@ -914,3 +922,66 @@ server_update_port(SERVER *server, unsigned short port)
 	spinlock_release(&server_spin);
 }
 
+/** Airproxy connection pool */
+
+void
+server_enqueue_connection_pool_request(SERVER *server, POOL_QUEUE_ITEM *item)
+{
+    ss_dassert(item != NULL && item->next == NULL && server != NULL);
+    spinlock_acquire(&server->conn_queue_lock);
+    if (server->conn_queue_tail != NULL) {
+        server->conn_queue_tail->next = item;
+        server->conn_queue_tail = item;
+    } else {
+        ss_dassert(server->pool_stats.n_queue_items == 0);
+        server->conn_queue_head = server->conn_queue_tail = item;
+    }
+    spinlock_release(&server->conn_queue_lock);
+    atomic_add(&server->pool_stats.n_queue_items, 1);
+
+    LOGIF(LD, (skygw_log_write(
+        LOGFILE_DEBUG,
+        "%lu [server_enqueue_connection_pool_request] server %p enqueue router "
+        "session %p",
+        pthread_self(), server, item->router_session)));
+}
+
+POOL_QUEUE_ITEM*
+server_dequeue_connection_pool_request(SERVER *server)
+{
+    POOL_QUEUE_ITEM *item = NULL;
+    spinlock_acquire(&server->conn_queue_lock);
+    if (server->conn_queue_head != NULL) {
+        item = server->conn_queue_head;
+        server->conn_queue_head = item->next;
+        item->next = NULL;
+        if (server->conn_queue_tail == item) {
+            server->conn_queue_tail = NULL;
+        }
+    }
+    spinlock_release(&server->conn_queue_lock);
+    if (item != NULL) {
+        atomic_add(&server->pool_stats.n_queue_items, -1);
+        LOGIF(LD, (skygw_log_write(
+            LOGFILE_DEBUG,
+            "%lu [server_dequeue_connection_pool_request] server %p dequeue "
+            "router session %p",
+            pthread_self(), server, item->router_session)));
+    }
+    return item;
+}
+
+static void
+server_clean_connection_pool_queue(SERVER *server)
+{
+    spinlock_acquire(&server->conn_queue_lock);
+    for (POOL_QUEUE_ITEM *q = server->conn_queue_head, *next = NULL;
+         q != NULL; q = next)
+    {
+        next = q->next;
+        free(q);
+    }
+    server->conn_queue_head = server->conn_queue_tail = NULL;
+    server->pool_stats.n_queue_items = 0;
+    spinlock_release(&server->conn_queue_lock);
+}

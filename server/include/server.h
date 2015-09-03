@@ -49,6 +49,9 @@
  * @endverbatim
  */
 
+/** Airproxy connection pool queue */
+typedef struct server_connection_pool_queue_item POOL_QUEUE_ITEM;
+
 /**
  * The server parameters used for weighting routing decissions
  *
@@ -75,7 +78,8 @@ typedef struct {
  * Airbnb connection pool statistics structure
  */
 typedef struct {
-	int        n_pool_conns; /**< Number of connections in pool */
+	int        n_pool_conns;     /**< Number of connections in pool */
+	int        n_queue_items;    /**< Number of waiting client router sessions */
 } CONN_POOL_STATS;
 
 /**
@@ -112,7 +116,12 @@ typedef struct server {
         long            persistpoolmax; /**< Maximum size of persistent connections pool */
         long            persistmaxtime; /**< Maximum number of seconds connection can live */
         int             persistmax;     /**< Maximum pool size actually achieved since startup */
+
         CONN_POOL_STATS pool_stats;     /**< Connection pool statistics */
+        POOL_QUEUE_ITEM *conn_queue_head; /**< List of client query router
+                                               sessions waiting for backend connection  */
+        POOL_QUEUE_ITEM *conn_queue_tail;
+        SPINLOCK        conn_queue_lock;  /**< Connection pool queue lock */
 #if defined(SS_DEBUG)
         skygw_chk_t     server_chk_tail;
 #endif
@@ -216,4 +225,23 @@ extern DCB      *server_get_persistent(SERVER *, char *, const char *);
 extern void	server_update_address(SERVER *, char *);
 extern void	server_update_port(SERVER *,  unsigned short);
 extern RESULTSET	*serverGetList();
+
+/** Airproxy connection pool queue */
+
+/**
+ * Server connection pool queue for multiplexing client connections and queries
+ * over a pool of persistent connections to backend server. The queue is agnostic
+ * to router type. That is, router session and backend connection linkage is
+ * specific to router implementation.
+ */
+struct server_connection_pool_queue_item
+{
+    void *router_session;
+    void *query_buf;
+    struct server_connection_pool_queue_item *next;
+};
+
+extern void server_enqueue_connection_pool_request(SERVER *server, POOL_QUEUE_ITEM *item);
+extern POOL_QUEUE_ITEM *server_dequeue_connection_pool_request(SERVER *server);
+
 #endif
