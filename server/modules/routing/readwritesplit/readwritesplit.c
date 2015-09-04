@@ -316,9 +316,9 @@ static ROUTER_INSTANCE* instances;
 static int hashkeyfun(void* key);
 static int hashcmpfun (void *, void *);
 
-static int park_connection(DCB *backend_dcb);
-static bool unpark_connection(DCB** p_dcb, ROUTER_CLIENT_SES* rses, backend_ref_t* bref);
 static void init_connection_pool_dcb(DCB* backend_dcb, backend_ref_t *brefs, int bref_idx);
+static int try_server_connection(ROUTER_CLIENT_SES *rses, backend_ref_t *bref);
+static int enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf);
 
 static int hashkeyfun(
 		void* key)
@@ -919,6 +919,7 @@ static void* newSession(
         client_rses->rses_capabilities = RCAP_TYPE_STMT_INPUT;
         client_rses->rses_backend_ref  = backend_ref;
         client_rses->rses_nbackends    = router_nservers; /*< # of backend servers */
+        client_rses->rses_bref_queued  = NULL; /* Airproxy pool queued */
 
 	if(client_rses->rses_config.rw_max_slave_conn_percent)
 	{
@@ -1295,9 +1296,13 @@ static bool get_dcb(
 		/** Assign selected DCB's pointer value */
 		if (candidate_bref != NULL)
 		{
-			/* Airproxy picks up backend connection from the pool */
+			/* Airproxy picks up backend connection from the pool, if any available. 
+			 * If no backend connection available, it marks router session such that
+			 * it will be queued in server connection pool queue. */
 			if (candidate_bref->bref_dcb == NULL && BREF_IS_IN_POOL(candidate_bref)) {
-			    unpark_connection(&candidate_bref->bref_dcb, rses, candidate_bref);
+			    int rc = try_server_connection(rses, candidate_bref);
+			    /* -1 means serious condition e.g. client session was gone */
+			    succp = (rc != -1) ? true : false;
 			}
 			*p_dcb = candidate_bref->bref_dcb;
 		}
@@ -1313,14 +1318,20 @@ static bool get_dcb(
 		if (BREF_IS_IN_USE(master_bref) &&
 			SERVER_IS_MASTER(master_bref->bref_backend->backend_server))
 		{
-			/* Airproxy picks up master backend connection from the pool */
+			/* Airproxy picks up master backend connection from the pool, if no
+			 * backend connection available, it marks router session such that it
+			 * will be queued in server connection pool queue. */
 			if (master_bref->bref_dcb == NULL && BREF_IS_IN_POOL(master_bref)) {
-			    unpark_connection(&master_bref->bref_dcb, rses, master_bref);
+			    int rc = try_server_connection(rses, master_bref);
+			    *p_dcb = master_bref->bref_dcb;
+			    /* -1 means serious condition e.g. client session was gone */
+			    succp = (rc != -1) ? true : false;
+			} else {
+			    *p_dcb = master_bref->bref_dcb;
+			    succp = true;
+			    /** if bref is in use DCB should not be closed */
+			    ss_dassert(master_bref->bref_dcb->state != DCB_STATE_ZOMBIE);
 			}
-			*p_dcb = master_bref->bref_dcb;
-			succp = true;
-			/** if bref is in use DCB should not be closed */
-			ss_dassert(master_bref->bref_dcb->state != DCB_STATE_ZOMBIE);
 		}
 		else
 		{
@@ -2629,6 +2640,19 @@ static bool route_single_stmt(
 	{
 		backend_ref_t*   bref;
 		sescmd_cursor_t* scur;
+
+		/* Airproxy router session must be queued to wait for server backend connection */
+		if (rses->rses_bref_queued != NULL) {
+		    GWBUF* querybuf_clone;
+
+		    ss_dassert(target_dcb == NULL);
+		    querybuf_clone = gwbuf_clone(querybuf);
+		    enqueue_server_connection_pool(rses, querybuf_clone);
+		    /* regardless routing status, signal success to client */
+		    succp = true;
+		    rses_end_locked_router_action(rses);
+		    goto retblock;
+		}
 		
 		bref = get_bref_from_dcb(rses, target_dcb);
 		scur = &bref->bref_sescmd_cur;
@@ -5569,6 +5593,27 @@ static backend_ref_t* get_root_master_bref(
  */
 
 static void
+link_dcb_backend_ref(DCB *backend_dcb, ROUTER_CLIENT_SES *rses, backend_ref_t *bref)
+{
+    SESSION *client_session = rses->client_dcb->session;
+
+    /* dcb->user was cleared when added to persistent connections pool */
+    backend_dcb->user = strdup(client_session->client->user);
+
+    // FIXME(liang) assume master and pass bref_index, this may not work for two
+    // backend_refs because it is object array but pointer array
+
+    /* link the backend_dcb with router session backend ref */
+    backend_dcb->rses_brefs = rses->rses_backend_ref;
+    backend_dcb->rses_bref_index = bref - rses->rses_backend_ref;
+    bref->bref_dcb = backend_dcb;
+    bref_clear_state(bref, BREF_IN_POOL);
+    if (rses->rses_bref_queued == bref) {
+        rses->rses_bref_queued = NULL;
+    }
+}
+
+static void
 unlink_dcb_backend_ref(DCB *backend_dcb)
 {
     backend_ref_t *backend_refs = (backend_ref_t *)backend_dcb->rses_brefs;
@@ -5582,43 +5627,33 @@ unlink_dcb_backend_ref(DCB *backend_dcb)
     backend_dcb->rses_bref_index = -1;
 }
 
-static int park_connection(DCB *backend_dcb)
+static int
+park_connection(DCB *backend_dcb)
 {
     int rc = 0;
-    if (backend_dcb->state == DCB_STATE_POLLING) {
-        SESSION *session = NULL;
-        backend_ref_t *backend_refs = (backend_ref_t *)backend_dcb->rses_brefs;
+    SESSION *session = NULL;
+    backend_ref_t *backend_refs = (backend_ref_t *)backend_dcb->rses_brefs;
 
-        ss_dassert(BREF_IS_IN_USE(&backend_refs[backend_dcb->rses_bref_index]));
-        ss_dassert(backend_dcb->session != NULL);
-        ss_dassert(backend_dcb->state == DCB_STATE_POLLING);
-        /* add backend DCB to server persistent connections pool */
-        if (dcb_park_server_connection_pool(backend_dcb)) {
-            backend_ref_t *bref = &backend_refs[backend_dcb->rses_bref_index];
-            /* mark router session backend ref as IN_POOL and reset DCB pointer */
-            bref_set_state(bref, BREF_IN_POOL);
-            bref->bref_dcb = NULL;
-            /* clear router session backend reference back pointer, it will be
-             * set when a backend_dcb is chosen to link with a client session */
-            backend_dcb->rses_brefs = NULL;
-            backend_dcb->rses_bref_index = -1;
-            rc = 1;
-        }
+    if (backend_dcb->state != DCB_STATE_POLLING) {
+        return 0;
     }
- 
+
+    ss_dassert(BREF_IS_IN_USE(&backend_refs[backend_dcb->rses_bref_index]));
+    ss_dassert(backend_dcb->session != NULL);
+    /* add backend DCB to server persistent connections pool */
+    if (dcb_park_server_connection_pool(backend_dcb)) {
+	unlink_dcb_backend_ref(backend_dcb);
+        rc = 1;
+    } 
     return rc;
 }
 
-static bool unpark_connection(DCB **p_dcb, ROUTER_CLIENT_SES *rses, backend_ref_t *bref)
+static bool
+unpark_connection(DCB **p_dcb, ROUTER_CLIENT_SES *rses, backend_ref_t *bref)
 {
     SESSION *client_session = NULL;
     SERVER *server = NULL;
     DCB *dcb = NULL;
-
-    if (rses->client_dcb == NULL)
-        return false;
-    if (bref == NULL || bref->bref_backend == NULL || p_dcb == NULL)
-        return false;
 
     server = bref->bref_backend->backend_server;
     ss_dassert(server != NULL);
@@ -5628,16 +5663,15 @@ static bool unpark_connection(DCB **p_dcb, ROUTER_CLIENT_SES *rses, backend_ref_
     dcb = server_get_persistent(server,
                                 rses->client_dcb->user,
                                 server->protocol);
-    /* FIXME(liang) manual test assume available dcb, remove when testing more */
-    ss_dassert(dcb != NULL);
     if (dcb == NULL)
         return false;
 
     LOGIF(LD, (skygw_log_write(
         LOGFILE_DEBUG,
-        "%lu [unpark_connection] pick up DCP %p for session %p query routing",
+        "%lu [unpark_connection] pick up DCB %p for session %p query routing",
         pthread_self(), dcb, client_session)));
 
+    /* link the backend connection with client session */
     if (!session_link_dcb(client_session, dcb)) {
         LOGIF(LD, (skygw_log_write(
             LOGFILE_DEBUG,
@@ -5650,18 +5684,150 @@ static bool unpark_connection(DCB **p_dcb, ROUTER_CLIENT_SES *rses, backend_ref_
         return false;
     }
 
-    /* dcb->user was cleared when added to persistent connections pool */
-    dcb->user = strdup(client_session->client->user);
-
-    // FIXME(liang) assume master and pass bref_index
-
-    /* link the backend_dcb with router session backend ref */
-    dcb->rses_brefs = rses->rses_backend_ref;
-    dcb->rses_bref_index = bref - rses->rses_backend_ref;
-    bref->bref_dcb = dcb;
-    bref_clear_state(bref, BREF_IN_POOL);
-
+    link_dcb_backend_ref(dcb, rses, bref);
     return true;
+}
+
+static int
+try_server_connection(ROUTER_CLIENT_SES *rses, backend_ref_t *bref)
+{
+    SESSION *client_session = NULL;
+    SERVER *server = NULL;
+    DCB *dcb = NULL;
+
+    if (rses == NULL || rses->client_dcb == NULL || bref == NULL || bref->bref_backend == NULL)
+        return -1;
+    ss_dassert(bref->bref_dcb == NULL);
+    if (unpark_connection(&bref->bref_dcb, rses, bref))
+        return 0;
+
+    /* no available backend connection, router session remembers which backend
+     * refenence is to be queued in server connection pool */
+    ss_dassert(rses->rses_bref_queued == NULL);
+    rses->rses_bref_queued = bref;
+    return 1;
+}
+
+static int
+enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf)
+{
+    SERVER *server = NULL;
+    POOL_QUEUE_ITEM *queue_item = NULL;
+
+    ss_dassert(rses->rses_bref_queued != NULL);
+    server = rses->rses_bref_queued->bref_backend->backend_server;
+    ss_dassert(server != NULL);
+
+    if ((queue_item = calloc(1, sizeof(POOL_QUEUE_ITEM))) == NULL) {
+        return -1;
+    }
+
+    LOGIF(LD, (skygw_log_write(
+            LOGFILE_DEBUG,
+            "%lu [enqueue_server_connection_pool] router session %p to server %p "
+            "for client session %p client_dcb %p",
+            pthread_self(), rses, server, rses->client_dcb->session, rses->client_dcb)));
+    queue_item->router_session = rses;
+    queue_item->query_buf = querybuf;
+    queue_item->next = NULL;
+    server_enqueue_connection_pool_request(server, queue_item);
+
+    return 0;
+}
+
+static bool
+forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb)
+{
+    int rc;
+    SESSION *client_session = NULL;
+
+    ss_dassert(rses->rses_bref_queued != NULL && rses->router != NULL);
+
+    LOGIF(LD, (skygw_log_write(
+            LOGFILE_DEBUG,
+            "%lu [forward_request_query] router session %p backend_dcb %p for server %p",
+            pthread_self(), rses, backend_dcb, backend_dcb->server)));
+
+    if (!rses_begin_locked_router_action(rses))
+        return false;
+ 
+    /* link backend dcb with the client router session queued in server pool */
+    link_dcb_backend_ref(backend_dcb, rses, rses->rses_bref_queued);
+    /* link backend dcb with the client session for response forwarding */
+    client_session = rses->client_dcb->session;
+    ss_dassert(client_session != NULL);
+    if (!session_link_dcb(client_session, backend_dcb)) {
+        return false;
+    }
+
+    /* forward query to backend server */
+    rc = backend_dcb->func.write(backend_dcb, querybuf);
+    if (rc == 1) {
+        backend_ref_t* bref = rses->rses_bref_queued;
+        atomic_add(&rses->router->stats.n_queries, 1);
+        /* add query response waiter to backend reference */
+        bref_set_state(bref, BREF_QUERY_ACTIVE);
+        bref_set_state(bref, BREF_WAITING_RESULT);
+        rc = true;
+    } else {
+        gwbuf_free(querybuf);
+        LOGIF((LE|LT), (skygw_log_write_flush(
+            LOGFILE_ERROR, "Error : Routing query failed.")));
+        rc = false;
+    }
+
+    rses_end_locked_router_action(rses);
+    return rc;
+}
+
+/**
+ * This callback is invoked at the end of router session, i.e. after result set
+ * forwarding from backend server to client. If there is pending request in
+ * queue, it picks up and serve it; else it returns to the connection pool.
+ */
+static int
+server_backend_connection_pool_cb(DCB *backend_dcb)
+{
+    bool park_dcb = true;
+    backend_ref_t *backend_refs;
+    backend_ref_t *bref = NULL;
+    SERVER *server = NULL;
+
+    /* FIXME(liang) should close it since it is in wrong state */
+    if (backend_dcb->state != DCB_STATE_POLLING)
+        return 0;
+
+    backend_refs = (backend_ref_t *)backend_dcb->rses_brefs;
+    bref = &backend_refs[backend_dcb->rses_bref_index];
+    server = bref->bref_backend->backend_server;
+
+    ss_dassert(BREF_IS_IN_USE(&backend_refs[backend_dcb->rses_bref_index]));
+    ss_dassert(backend_dcb->session != NULL);
+    ss_dassert(backend_dcb->state == DCB_STATE_POLLING);
+
+    /* check out existing connection pool request and serve directly, if any */
+    if (server->pool_stats.n_queue_items > 0) {
+        POOL_QUEUE_ITEM *req = NULL;
+
+        /* unlink this backend connection from router session backend ref */
+        unlink_dcb_backend_ref(backend_dcb);
+        req = server_dequeue_connection_pool_request(server);
+        if (req != NULL) {
+            /* FIXME(liang) must send error to client if query routing failed */
+            forward_request_query((ROUTER_CLIENT_SES *)req->router_session,
+                                (GWBUF *)req->query_buf, backend_dcb);
+            /* FIXME(liang) replace malloc with embedded POOL_QUEUE_ITEM
+             * free the connection pool queue item */
+            free(req);
+            park_dcb = false;
+        }
+    }
+
+    if (park_dcb) {
+        park_connection(backend_dcb);
+    }
+
+    return 0;
 }
 
 /**
@@ -5691,7 +5857,7 @@ init_connection_pool_dcb(DCB *backend_dcb, backend_ref_t *backend_refs,
 			 int backend_ref_idx)
 {
     /* register router specific connection pooling callback */
-    backend_dcb->func.pool = park_connection;
+    backend_dcb->func.pool = server_backend_connection_pool_cb;
     backend_dcb->func.pool_auth_cb = server_backend_auth_connection_close_cb;
     /* register router session backend refererence back pointer */
     backend_dcb->rses_brefs = backend_refs;

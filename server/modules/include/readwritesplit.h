@@ -301,6 +301,7 @@ struct router_client_session {
         HASHTABLE*       rses_prep_stmt[2];
 #endif
 	struct router_instance	 *router;	/*< The router instance */
+	backend_ref_t   *rses_bref_queued; /*< backend reference to be queued for connection */
         struct router_client_session* next;
 #if defined(SS_DEBUG)
         skygw_chk_t      rses_chk_tail;
