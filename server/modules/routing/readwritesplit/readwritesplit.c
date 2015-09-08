@@ -320,6 +320,13 @@ static void init_connection_pool_dcb(DCB* backend_dcb, backend_ref_t *brefs, int
 static int try_server_connection(ROUTER_CLIENT_SES *rses, backend_ref_t *bref);
 static int enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf);
 
+/* Airproxy checks backend server connection pool for available backend_dcb,
+ * iff connection pooling is enabled and the backend_ref is marked IN_POOL
+ * i.e. not linked with any connection. */
+#define BREF_SHOULD_CHECK_CONN_POOL(bref) \
+  (SERVER_USE_CONN_POOL(bref->bref_backend->backend_server) && bref->bref_dcb == NULL \
+   && BREF_IS_IN_POOL(bref))
+
 static int hashkeyfun(
 		void* key)
 {
@@ -1299,7 +1306,7 @@ static bool get_dcb(
 			/* Airproxy picks up backend connection from the pool, if any available. 
 			 * If no backend connection available, it marks router session such that
 			 * it will be queued in server connection pool queue. */
-			if (candidate_bref->bref_dcb == NULL && BREF_IS_IN_POOL(candidate_bref)) {
+			if (BREF_SHOULD_CHECK_CONN_POOL(candidate_bref)) {
 			    int rc = try_server_connection(rses, candidate_bref);
 			    /* -1 means serious condition e.g. client session was gone */
 			    succp = (rc != -1) ? true : false;
@@ -1321,7 +1328,7 @@ static bool get_dcb(
 			/* Airproxy picks up master backend connection from the pool, if no
 			 * backend connection available, it marks router session such that it
 			 * will be queued in server connection pool queue. */
-			if (master_bref->bref_dcb == NULL && BREF_IS_IN_POOL(master_bref)) {
+			if (BREF_SHOULD_CHECK_CONN_POOL(master_bref)) {
 			    int rc = try_server_connection(rses, master_bref);
 			    *p_dcb = master_bref->bref_dcb;
 			    /* -1 means serious condition e.g. client session was gone */
@@ -5697,6 +5704,7 @@ try_server_connection(ROUTER_CLIENT_SES *rses, backend_ref_t *bref)
 
     if (rses == NULL || rses->client_dcb == NULL || bref == NULL || bref->bref_backend == NULL)
         return -1;
+    ss_dassert(SERVER_USE_CONN_POOL(bref->bref_backend->backend_server));
     ss_dassert(bref->bref_dcb == NULL);
     if (unpark_connection(&bref->bref_dcb, rses, bref))
         return 0;
@@ -5801,6 +5809,7 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
     bref = &backend_refs[backend_dcb->rses_bref_index];
     server = bref->bref_backend->backend_server;
 
+    ss_dassert(server == backend_dcb->server && SERVER_USE_CONN_POOL(server));
     ss_dassert(BREF_IS_IN_USE(&backend_refs[backend_dcb->rses_bref_index]));
     ss_dassert(backend_dcb->session != NULL);
     ss_dassert(backend_dcb->state == DCB_STATE_POLLING);

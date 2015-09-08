@@ -591,8 +591,10 @@ static int gw_read_backend_event(DCB *dcb) {
                                                 session->router_session,
                                                 read_buffer,
                                                 dcb);
-                                        /* FIXME(liang) check if server enabled pooling */
-                                        if (backend_protocol->protocol_auth_state == MYSQL_IDLE) {
+                                        /* Airproxy check whether server connection pool is enabled */
+                                        if (backend_protocol->protocol_auth_state == MYSQL_IDLE &&
+					    SERVER_USE_CONN_POOL(dcb->server))
+					{
                                             park_connection = true;
                                         }
 					rc = 1;

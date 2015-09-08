@@ -930,7 +930,8 @@ server_update_port(SERVER *server, unsigned short port)
 void
 server_enqueue_connection_pool_request(SERVER *server, POOL_QUEUE_ITEM *item)
 {
-    ss_dassert(item != NULL && item->next == NULL && server != NULL);
+    ss_dassert(item != NULL && item->next == NULL);
+    ss_dassert(server != NULL && SERVER_USE_CONN_POOL(server));
     spinlock_acquire(&server->conn_queue_lock);
     if (server->conn_queue_tail != NULL) {
         server->conn_queue_tail->next = item;
@@ -953,6 +954,7 @@ POOL_QUEUE_ITEM*
 server_dequeue_connection_pool_request(SERVER *server)
 {
     POOL_QUEUE_ITEM *item = NULL;
+    ss_dassert(server != NULL && SERVER_USE_CONN_POOL(server));
     spinlock_acquire(&server->conn_queue_lock);
     if (server->conn_queue_head != NULL) {
         item = server->conn_queue_head;
