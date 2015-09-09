@@ -862,10 +862,11 @@ process_config_context(CONFIG_CONTEXT *context)
 				/* server connection pool size */
 				server->conn_pool_size = strtol(config_get_value_string(obj->parameters, "connection_pool_size"), NULL, 0);
 				if (server->conn_pool_size > 0) {
-				    server->persistpoolmax = server->conn_pool_size > server->persistpoolmax ?
-				        server->conn_pool_size : server->persistpoolmax;
-				    server->persistmaxtime = 86400 > server->persistmaxtime ?
-				        86400 : server->persistmaxtime;
+				    server->persistpoolmax = MAX(server->conn_pool_size, server->persistpoolmax);
+				    /* ensure pooling connections have large timeout */
+				    server->persistmaxtime = MAX(86400, server->persistmaxtime);
+				    /* mark proxy server have server connection pooling enabled */
+				    gateway.server_connection_pools = 1;
 				}
 				CONFIG_PARAMETER *params = obj->parameters;
 				while (params)
@@ -1681,6 +1682,9 @@ global_defaults()
 		strcpy(gateway.sysname, "undefined");
 	else
 		strncpy(gateway.sysname, uname_data.sysname, _SYSNAME_STR_LENGTH);
+
+	/* Airproxy connection pooling disabled by default */
+	gateway.server_connection_pools = 0;
 }
 
 /**
@@ -2636,4 +2640,12 @@ void config_add_param(CONFIG_CONTEXT* obj, char* key,char* value)
 GATEWAY_CONF* config_get_global_options()
 {
     return &gateway;
+}
+
+/**
+ * Return true if any backend server has connection pool enabled.
+ */
+bool config_connection_pool_enabled()
+{
+  return gateway.server_connection_pools > 0;
 }
