@@ -131,7 +131,9 @@ session_alloc(SERVICE *service, DCB *client_dcb)
      * DCBs. Note that this doesn't mean that router is initialized yet!
      */
     session->state = SESSION_STATE_READY;
-        
+
+    session->ses_ignore_sescmd = false; /* Airproxy connection pooling mode */
+
     /*< Release session lock */
     spinlock_release(&session->ses_lock);
 

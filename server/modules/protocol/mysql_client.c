@@ -84,6 +84,8 @@ extern char* create_auth_fail_str(char *username, char *hostaddr, char *sha1, ch
 
 int do_ssl_accept(MySQLProtocol* protocol);
 
+static void conn_proxy_disallow_sescmds(SESSION *session);
+
 /*
  * The "module object" for the mysqld client protocol module.
  */
@@ -1158,6 +1160,10 @@ int gw_read_client_event(
                         if (rc)
 			{
 			    rc = 0; /**< here '0' means success */
+			    /* Airproxy disallows session command in connection pooling mode */
+			    if (config_connection_pool_enabled() && session->ses_ignore_sescmd) {
+			        conn_proxy_disallow_sescmds(session);
+			    }
                         }
                         else
 			{
@@ -1969,6 +1975,10 @@ static int route_by_statement(
                         gwbuf_set_type(packetbuf, GWBUF_TYPE_SINGLE_STMT);
                         /** Route query */
                         rc = SESSION_ROUTE_QUERY(session, packetbuf);
+			/* Airproxy disallows session command in connection pooling mode */
+		        if (config_connection_pool_enabled() && session->ses_ignore_sescmd) {
+			    conn_proxy_disallow_sescmds(session);
+		        }
                 }
                 else
                 {
@@ -2057,4 +2067,17 @@ int do_ssl_accept(MySQLProtocol* protocol)
 #endif
 
     return rval;
+}
+
+/** Airproxy connection pooling */
+
+static void conn_proxy_disallow_sescmds(SESSION *session)
+{
+    /* FIXME(liang) add configurable option to return okay or custom error message */
+    if (session->client->state == DCB_STATE_POLLING) {
+        mysql_send_ok(session->client, 1, 0, NULL);
+    }
+    spinlock_acquire(&session->ses_lock);
+    session->ses_ignore_sescmd = false;
+    spinlock_release(&session->ses_lock);
 }

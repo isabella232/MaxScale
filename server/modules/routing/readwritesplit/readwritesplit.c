@@ -2297,9 +2297,12 @@ static bool route_single_stmt(
 	 * If autocommit is disabled or transaction is explicitly started
 	 * transaction becomes active and master gets all statements until
 	 * transaction is committed and autocommit is enabled again.
+	 *
+	 * Airproxy disallow autocommit if in connection pooling mode.
 	 */
 	if (rses->rses_autocommit_enabled &&
-		QUERY_IS_TYPE(qtype, QUERY_TYPE_DISABLE_AUTOCOMMIT))
+		QUERY_IS_TYPE(qtype, QUERY_TYPE_DISABLE_AUTOCOMMIT) &&
+	    !config_connection_pool_enabled())
 	{
 		rses->rses_autocommit_enabled = false;
 		
@@ -2324,7 +2327,8 @@ static bool route_single_stmt(
 		rses->rses_transaction_active = false;
 	} 
 	else if (!rses->rses_autocommit_enabled &&
-		QUERY_IS_TYPE(qtype, QUERY_TYPE_ENABLE_AUTOCOMMIT))
+		QUERY_IS_TYPE(qtype, QUERY_TYPE_ENABLE_AUTOCOMMIT) &&
+		 !config_connection_pool_enabled())
 	{
 		rses->rses_autocommit_enabled = true;
 		rses->rses_transaction_active = false;
@@ -2438,6 +2442,30 @@ static bool route_single_stmt(
 			if (qtype_str) free(qtype_str);
 			goto retblock;
 		}
+
+		/* Airproxy ignores session commands, if connection pooling enabled */
+		if (config_connection_pool_enabled()) {
+		    char* query_str = modutil_get_query(querybuf);
+		    char* qtype_str = skygw_get_qtype_str(qtype);
+
+		    LOGIF(LE, (skygw_log_write(
+			LOGFILE_ERROR,
+			"Error : connection proxy ignoring session command %s:%s: \"%s\" ",
+			STRPACKETTYPE(packet_type),
+			qtype_str,
+			(query_str == NULL ? "(empty)" : query_str))));
+		    /* tell client module to send silent ok message to client */
+		    spinlock_acquire(&rses->client_dcb->session->ses_lock);
+		    rses->client_dcb->session->ses_ignore_sescmd = true;
+		    spinlock_release(&rses->client_dcb->session->ses_lock);
+
+		    if (query_str)
+		        free(query_str);
+		    if (qtype_str)
+		        free(qtype_str);
+		    goto retblock;
+		}
+
 		/**
 		 * It is not sure if the session command in question requires
 		 * response. Statement is examined in route_session_write.
