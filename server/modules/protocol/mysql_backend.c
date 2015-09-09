@@ -440,6 +440,11 @@ static int gw_read_backend_event(DCB *dcb) {
                                         rc = backend_write_delayqueue(dcb);
                                         goto return_with_lock;
                                 }
+				/* Airproxy check if an auth connection should park in server pool */
+				else if (SERVER_USE_CONN_POOL(dcb->server) && dcb->in_conn_auth_phase)
+				{
+				        park_connection = true;
+				}
                         }
                 } /* MYSQL_AUTH_RECV || MYSQL_AUTH_FAILED */
 
