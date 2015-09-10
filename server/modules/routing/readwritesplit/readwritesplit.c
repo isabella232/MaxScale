@@ -5615,9 +5615,6 @@ link_dcb_backend_ref(DCB *backend_dcb, ROUTER_CLIENT_SES *rses, backend_ref_t *b
     backend_dcb->rses_bref_index = bref - rses->rses_backend_ref;
     bref->bref_dcb = backend_dcb;
     bref_clear_state(bref, BREF_IN_POOL);
-    if (rses->rses_bref_queued == bref) {
-        rses->rses_bref_queued = NULL;
-    }
 }
 
 static void
@@ -5747,6 +5744,7 @@ static bool
 forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb)
 {
     int rc;
+    backend_ref_t* bref;
     SESSION *client_session = NULL;
 
     ss_dassert(rses->rses_bref_queued != NULL && rses->router != NULL);
@@ -5760,7 +5758,9 @@ forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb
         return false;
  
     /* link backend dcb with the client router session queued in server pool */
-    link_dcb_backend_ref(backend_dcb, rses, rses->rses_bref_queued);
+    bref = rses->rses_bref_queued;
+    link_dcb_backend_ref(backend_dcb, rses, bref);
+    rses->rses_bref_queued = NULL;
     /* link backend dcb with the client session for response forwarding */
     client_session = rses->client_dcb->session;
     ss_dassert(client_session != NULL);
@@ -5771,7 +5771,6 @@ forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb
     /* forward query to backend server */
     rc = backend_dcb->func.write(backend_dcb, querybuf);
     if (rc == 1) {
-        backend_ref_t* bref = rses->rses_bref_queued;
         atomic_add(&rses->router->stats.n_queries, 1);
         /* add query response waiter to backend reference */
         bref_set_state(bref, BREF_QUERY_ACTIVE);
