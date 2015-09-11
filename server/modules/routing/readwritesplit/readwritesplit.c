@@ -2311,8 +2311,15 @@ static bool route_single_stmt(
 			rses->rses_transaction_active = true;
 		}
 	}
+	/**
+	 * Airproxy avoids turning active transaction on, which is side effect
+	 * of disable aucommit in MaxScale query classifier, if in connection
+	 * pooling mode.
+	 */
 	else if (!rses->rses_transaction_active &&
-		QUERY_IS_TYPE(qtype, QUERY_TYPE_BEGIN_TRX))
+		QUERY_IS_TYPE(qtype, QUERY_TYPE_BEGIN_TRX) &&
+		 !(config_connection_pool_enabled() &&
+		   QUERY_IS_TYPE(qtype, QUERY_TYPE_DISABLE_AUTOCOMMIT)))
 	{
 		rses->rses_transaction_active = true;
 	}
