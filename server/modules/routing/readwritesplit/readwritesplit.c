@@ -5840,10 +5840,19 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
     backend_ref_t *backend_refs;
     backend_ref_t *bref = NULL;
     SERVER *server = NULL;
+    ROUTER_CLIENT_SES *rses = NULL;
 
     /* FIXME(liang) should close it since it is in wrong state */
     if (backend_dcb->state != DCB_STATE_POLLING)
         return 0;
+
+    /* keep client session and backend connection linked, if it is known to be
+     * within transaction context */
+    ss_dassert(backend_dcb->session != NULL);
+    rses = backend_dcb->session->router_session;
+    if (rses->rses_transaction_active) {
+        return 0;
+    }
 
     backend_refs = (backend_ref_t *)backend_dcb->rses_brefs;
     bref = &backend_refs[backend_dcb->rses_bref_index];
@@ -5851,8 +5860,7 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
 
     ss_dassert(server == backend_dcb->server && SERVER_USE_CONN_POOL(server));
     ss_dassert(BREF_IS_IN_USE(&backend_refs[backend_dcb->rses_bref_index]));
-    ss_dassert(backend_dcb->session != NULL);
-    ss_dassert(backend_dcb->state == DCB_STATE_POLLING);
+
 
     /* check out existing connection pool request and serve directly, if any */
     if (server->pool_stats.n_queue_items > 0) {
