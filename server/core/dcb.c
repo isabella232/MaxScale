@@ -613,9 +613,14 @@ dcb_connect(SERVER *server, SESSION *session, const char *protocol)
     int         fd;
     int         rc;
     char        *user;
+    bool        session_router_ready = (session->state == SESSION_STATE_ROUTER_READY);
+
+        /* Airproxy always use new backend connection to complete client authentication,
+	 * so don't look for parked connection in the server connection pool. */
 
         user = session_getUser(session);
-        if (user && strlen(user))
+        if (user && strlen(user) &&
+	    (!config_connection_pool_enabled() || session_router_ready))
         {
             LOGIF(LD, (skygw_log_write(
                 LOGFILE_DEBUG,
