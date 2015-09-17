@@ -687,7 +687,7 @@ dcb_connect(SERVER *server, SESSION *session, const char *protocol)
 	}
 
         /* Airproxy mark new backend connection DCB doing server authentication */
-	dcb->in_conn_auth_phase = true;
+	DCB_SET_IN_AUTH_PHASE(dcb);
 
         fd = dcb->func.connect(dcb, server, session);
 
@@ -1806,7 +1806,7 @@ dcb_maybe_add_persistent(DCB *dcb)
         && !dcb->dcb_errhandle_called
         && !(dcb->flags & DCBF_HUNG)
         && (poolcount = dcb_persistent_clean_count(dcb, false)) < dcb->server->persistpoolmax
-        && (!dcb->in_conn_auth_phase || dcb->server->pool_stats.n_pool_conns < dcb->server->persistpoolmax))
+        && (!DCB_IS_IN_AUTH_PHASE(dcb) || dcb->server->pool_stats.n_pool_conns < dcb->server->persistpoolmax))
     {
         LOGIF(LD, (skygw_log_write(
             LOGFILE_DEBUG,
@@ -1825,9 +1825,10 @@ dcb_maybe_add_persistent(DCB *dcb)
         atomic_add(&dcb->server->stats.n_current, -1);
         /* count in this new backend connection in server connection pool since 
 	 * pool size has not met configured max */
-        if (dcb->in_conn_auth_phase) {
+        if (DCB_IS_IN_AUTH_PHASE(dcb)) {
             atomic_add(&dcb->server->pool_stats.n_pool_conns, 1);
-            dcb->in_conn_auth_phase = false;
+            DCB_SET_IN_CONN_POOL(dcb);
+            DCB_CLR_IN_AUTH_PHASE(dcb);
         }
         return true;
     }
@@ -1876,6 +1877,11 @@ dcb_close_finish(DCB *dcb)
     {
         if (dcb->server->persistent) CHK_DCB(dcb->server->persistent);
         if (0 == dcb->persistentstart) atomic_add(&dcb->server->stats.n_current, -1);
+        /* Airproxy adjust connection pool stats */
+        if (DCB_IS_IN_CONN_POOL(dcb)) {
+            atomic_add(&dcb->server->pool_stats.n_pool_conns, -1);
+            DCB_CLR_IN_CONN_POOL(dcb);
+        }
     }
     /**
      * close protocol and router session
@@ -3214,7 +3220,7 @@ bool dcb_park_server_connection_pool(DCB *dcb)
             LOGFILE_DEBUG,
             "%lu [dcb_park_server_connection_pool] park DCB %p in server %p pool",
             pthread_self(), dcb, dcb->server)));
-    } else if (dcb->in_conn_auth_phase) {
+    } else if (DCB_IS_IN_AUTH_PHASE(dcb)) {
         /* close temp backend connection used for client auth */
         dcb->func.pool_auth_cb(dcb);
     }

@@ -441,7 +441,7 @@ static int gw_read_backend_event(DCB *dcb) {
                                         goto return_with_lock;
                                 }
 				/* Airproxy check if an auth connection should park in server pool */
-				else if (SERVER_USE_CONN_POOL(dcb->server) && dcb->in_conn_auth_phase)
+				else if (SERVER_USE_CONN_POOL(dcb->server) && DCB_IS_IN_AUTH_PHASE(dcb))
 				{
 				        park_connection = true;
 				}

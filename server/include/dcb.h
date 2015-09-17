@@ -278,7 +278,7 @@ typedef struct dcb {
     skygw_chk_t     dcb_chk_tail;
 	void           *rses_brefs; /**< connection pooling backend_ref */
 	int             rses_bref_index; /**< backend_ref index */
-	bool            in_conn_auth_phase; /**< connection in authentication phase */
+	int             conn_pool_state; /**< connection pool state */
 } DCB;
 
 /**
@@ -356,11 +356,6 @@ int dcb_write_SSL(DCB *dcb,GWBUF *queue);
 int dcb_read_SSL(DCB   *dcb,GWBUF **head);
 int dcb_drain_writeq_SSL(DCB *dcb);
 
-/* Airbnb database connection proxy */
-
-void dcb_add_server_persistent_connection_fast(DCB*);
-bool dcb_park_server_connection_pool(DCB*);
-
 /**
  * DCB flags values
  */
@@ -370,4 +365,24 @@ bool dcb_park_server_connection_pool(DCB*);
 
 #define DCB_IS_CLONE(d) ((d)->flags & DCBF_CLONE)
 #define DCB_REPLIED(d) ((d)->flags & DCBF_REPLIED)
+
+/* Airbnb database connection proxy */
+
+/**
+ * Airproxy connection pool state
+ */
+#define DCB_CONN_POOL_IN_AUTH_PHASE 0x0001  /**<< is in authentication phase */
+#define DCB_CONN_POOL_IN_POOL       0x0002  /**<< is member of server connection pool */
+
+#define DCB_SET_IN_AUTH_PHASE(dcb) { dcb->conn_pool_state |= DCB_CONN_POOL_IN_AUTH_PHASE; }
+#define DCB_CLR_IN_AUTH_PHASE(dcb) { dcb->conn_pool_state &= ~DCB_CONN_POOL_IN_AUTH_PHASE; }
+#define DCB_IS_IN_AUTH_PHASE(dcb)  (dcb->conn_pool_state & DCB_CONN_POOL_IN_AUTH_PHASE)
+
+#define DCB_SET_IN_CONN_POOL(dcb) { dcb->conn_pool_state |= DCB_CONN_POOL_IN_POOL; }
+#define DCB_CLR_IN_CONN_POOL(dcb) { dcb->conn_pool_state &= ~DCB_CONN_POOL_IN_POOL; }
+#define DCB_IS_IN_CONN_POOL(dcb)  (dcb->conn_pool_state & DCB_CONN_POOL_IN_POOL)
+
+void dcb_add_server_persistent_connection_fast(DCB*);
+bool dcb_park_server_connection_pool(DCB*);
+
 #endif /*  _DCB_H */
