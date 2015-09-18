@@ -440,11 +440,11 @@ static int gw_read_backend_event(DCB *dcb) {
                                         rc = backend_write_delayqueue(dcb);
                                         goto return_with_lock;
                                 }
-				/* Airproxy check if an auth connection should park in server pool */
-				else if (SERVER_USE_CONN_POOL(dcb->server) && DCB_IS_IN_AUTH_PHASE(dcb))
-				{
-				        park_connection = true;
-				}
+                                /* Airproxy check if an auth connection should park in server pool */
+                                else if (SERVER_USE_CONN_POOL(dcb->server) && DCB_IS_IN_AUTH_PHASE(dcb))
+                                {
+                                        park_connection = true;
+                                }
                         }
                 } /* MYSQL_AUTH_RECV || MYSQL_AUTH_FAILED */
 
@@ -620,7 +620,7 @@ static int gw_read_backend_event(DCB *dcb) {
         }
         
 return_rc:
-        /* FIXME(liang) server should enabled pooling, session transaction finishes */
+        /* Airproxy invokes connection pool callback */
         if (park_connection) {
             ss_dassert(dcb != NULL && dcb->func.pool != NULL);
             dcb->func.pool(dcb);
