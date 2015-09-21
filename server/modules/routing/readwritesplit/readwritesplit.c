@@ -5862,7 +5862,7 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
     ss_dassert(BREF_IS_IN_USE(&backend_refs[backend_dcb->rses_bref_index]));
 
     /* check out existing connection pool request and serve directly, if any */
-    if (DCB_IS_IN_CONN_POOL(backend_dcb) && server->pool_stats.n_queue_items > 0) {
+    if (DCB_IS_IN_CONN_POOL(backend_dcb) && !SERVER_CONN_POOL_QUEUE_EMPTY(server)) {
         POOL_QUEUE_ITEM *req = NULL;
 
         /* unlink this backend connection from router session backend ref */

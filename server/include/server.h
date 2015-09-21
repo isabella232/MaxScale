@@ -79,8 +79,18 @@ typedef struct {
  */
 typedef struct {
 	int        n_pool_conns;     /**< Number of connections in pool */
+	int        n_parked_conns;   /**< Number of connections currently parking in pool */
 	int        n_queue_items;    /**< Number of waiting client router sessions */
 } CONN_POOL_STATS;
+
+typedef struct {
+        CONN_POOL_STATS  pool_stats;      /**< Connection pool statistics */
+        long             conn_pool_size;  /**< Connection pool size limit */
+        POOL_QUEUE_ITEM *conn_queue_head; /**< List of client query router
+                                               sessions waiting for backend connection  */
+        POOL_QUEUE_ITEM *conn_queue_tail;
+        SPINLOCK         conn_queue_lock; /**< Connection pool queue lock */
+} SERVER_CONN_POOL;
 
 /**
  * The SERVER structure defines a backend server. Each server has a name
@@ -117,12 +127,7 @@ typedef struct server {
         long            persistmaxtime; /**< Maximum number of seconds connection can live */
         int             persistmax;     /**< Maximum pool size actually achieved since startup */
 
-        CONN_POOL_STATS pool_stats;     /**< Connection pool statistics */
-        long            conn_pool_size; /**< Connection pool size */
-        POOL_QUEUE_ITEM *conn_queue_head; /**< List of client query router
-                                               sessions waiting for backend connection  */
-        POOL_QUEUE_ITEM *conn_queue_tail;
-        SPINLOCK        conn_queue_lock;  /**< Connection pool queue lock */
+        SERVER_CONN_POOL conn_pool;     /**< Connection pool */
 #if defined(SS_DEBUG)
         skygw_chk_t     server_chk_tail;
 #endif
@@ -206,7 +211,7 @@ typedef struct server {
 /**
  * Is the server using connection pool
  */
-#define SERVER_USE_CONN_POOL(server) (server->conn_pool_size > 0)
+#define SERVER_USE_CONN_POOL(server) (server->conn_pool.conn_pool_size > 0)
 
 extern SERVER	*server_alloc(char *, char *, unsigned short);
 extern int	server_free(SERVER *);
@@ -233,6 +238,12 @@ extern void	server_update_port(SERVER *,  unsigned short);
 extern RESULTSET	*serverGetList();
 
 /** Airproxy connection pool queue */
+
+/* server connection pool is fully bootstrapped */
+#define SERVER_CONN_POOL_FULL(server) \
+  (server->conn_pool.pool_stats.n_pool_conns == server->persistpoolmax)
+
+#define SERVER_CONN_POOL_QUEUE_EMPTY(server) (server->conn_pool.conn_queue_head == NULL)
 
 /**
  * Server connection pool queue for multiplexing client connections and queries

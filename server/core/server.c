@@ -57,6 +57,7 @@ static SERVER	*allServers = NULL;
 
 static void spin_reporter(void *, char *, int);
 
+static void server_init_conn_pool(SERVER *);
 static void server_clean_connection_pool_queue(SERVER *);
 
 /**
@@ -93,11 +94,7 @@ SERVER 	*server;
         spinlock_init(&server->persistlock);
 
 	/* Airproxy connection pool */
-	server->pool_stats.n_pool_conns = 0;
-	server->pool_stats.n_queue_items = 0;
-	server->conn_pool_size = 0;
-	server->conn_queue_head = server->conn_queue_tail = NULL;
-	spinlock_init(&server->conn_queue_lock);
+	server_init_conn_pool(server);
 
 	spinlock_acquire(&server_spin);
 	server->next = allServers;
@@ -146,7 +143,7 @@ SERVER *server;
 		free(tofreeserver->server_string);
         if (tofreeserver->persistent)
             dcb_persistent_clean_count(tofreeserver->persistent, true);
-	if (tofreeserver->conn_queue_head != NULL) {
+	if (!SERVER_CONN_POOL_QUEUE_EMPTY(tofreeserver)) {
             server_clean_connection_pool_queue(tofreeserver);
 	}
 	free(tofreeserver);
@@ -190,6 +187,10 @@ server_get_persistent(SERVER *server, char *user, const char *protocol)
                 spinlock_release(&server->persistlock);
                 atomic_add(&server->stats.n_persistent, -1);
                 atomic_add(&server->stats.n_current, 1);
+		/* Airproxy keeps track of connections parked in pool */
+		if (DCB_IS_IN_CONN_POOL(dcb)) {
+		    atomic_add(&server->conn_pool.pool_stats.n_parked_conns, -1);
+		}
                 return dcb;
             }
             else
@@ -391,7 +392,7 @@ char	*stat;
                     dcb_printf(dcb, "\tPersistent max time (secs):          %d\n",
 						server->persistmaxtime);
 		    dcb_printf(dcb, "\tConnection pool size limit:          %d\n",
-						server->conn_pool_size);
+						server->conn_pool.conn_pool_size);
                 }
                 server = server->next;
 	}
@@ -927,21 +928,40 @@ server_update_port(SERVER *server, unsigned short port)
 
 /** Airproxy connection pool */
 
+static void
+server_init_conn_pool_stats(SERVER_CONN_POOL *conn_pool)
+{
+    conn_pool->pool_stats.n_pool_conns = 0;
+    conn_pool->pool_stats.n_parked_conns = 0;
+    conn_pool->pool_stats.n_queue_items = 0;
+}
+
+static void
+server_init_conn_pool(SERVER *server)
+{
+    SERVER_CONN_POOL *conn_pool = &server->conn_pool;
+    server_init_conn_pool_stats(conn_pool);
+    conn_pool->conn_pool_size = 0;
+    conn_pool->conn_queue_head = conn_pool->conn_queue_tail = NULL;
+    spinlock_init(&conn_pool->conn_queue_lock);
+}
+
 void
 server_enqueue_connection_pool_request(SERVER *server, POOL_QUEUE_ITEM *item)
 {
+    SERVER_CONN_POOL *conn_pool = &server->conn_pool;
     ss_dassert(item != NULL && item->next == NULL);
     ss_dassert(server != NULL && SERVER_USE_CONN_POOL(server));
-    spinlock_acquire(&server->conn_queue_lock);
-    if (server->conn_queue_tail != NULL) {
-        server->conn_queue_tail->next = item;
-        server->conn_queue_tail = item;
+    spinlock_acquire(&conn_pool->conn_queue_lock);
+    if (conn_pool->conn_queue_tail != NULL) {
+        conn_pool->conn_queue_tail->next = item;
+        conn_pool->conn_queue_tail = item;
     } else {
-        ss_dassert(server->pool_stats.n_queue_items == 0);
-        server->conn_queue_head = server->conn_queue_tail = item;
+        ss_dassert(conn_pool->pool_stats.n_queue_items == 0);
+        conn_pool->conn_queue_head = conn_pool->conn_queue_tail = item;
     }
-    spinlock_release(&server->conn_queue_lock);
-    atomic_add(&server->pool_stats.n_queue_items, 1);
+    spinlock_release(&conn_pool->conn_queue_lock);
+    atomic_add(&conn_pool->pool_stats.n_queue_items, 1);
 
     LOGIF(LD, (skygw_log_write(
         LOGFILE_DEBUG,
@@ -954,19 +974,20 @@ POOL_QUEUE_ITEM*
 server_dequeue_connection_pool_request(SERVER *server)
 {
     POOL_QUEUE_ITEM *item = NULL;
+    SERVER_CONN_POOL *conn_pool = &server->conn_pool;
     ss_dassert(server != NULL && SERVER_USE_CONN_POOL(server));
-    spinlock_acquire(&server->conn_queue_lock);
-    if (server->conn_queue_head != NULL) {
-        item = server->conn_queue_head;
-        server->conn_queue_head = item->next;
+    spinlock_acquire(&conn_pool->conn_queue_lock);
+    if (conn_pool->conn_queue_head != NULL) {
+        item = conn_pool->conn_queue_head;
+        conn_pool->conn_queue_head = item->next;
         item->next = NULL;
-        if (server->conn_queue_tail == item) {
-            server->conn_queue_tail = NULL;
+        if (conn_pool->conn_queue_tail == item) {
+            conn_pool->conn_queue_tail = NULL;
         }
     }
-    spinlock_release(&server->conn_queue_lock);
+    spinlock_release(&conn_pool->conn_queue_lock);
     if (item != NULL) {
-        atomic_add(&server->pool_stats.n_queue_items, -1);
+        atomic_add(&conn_pool->pool_stats.n_queue_items, -1);
         LOGIF(LD, (skygw_log_write(
             LOGFILE_DEBUG,
             "%lu [server_dequeue_connection_pool_request] server %p dequeue "
@@ -979,8 +1000,9 @@ server_dequeue_connection_pool_request(SERVER *server)
 static void
 server_clean_connection_pool_queue(SERVER *server)
 {
-    spinlock_acquire(&server->conn_queue_lock);
-    for (POOL_QUEUE_ITEM *q = server->conn_queue_head, *next = NULL;
+    SERVER_CONN_POOL *conn_pool = &server->conn_pool;
+    spinlock_acquire(&conn_pool->conn_queue_lock);
+    for (POOL_QUEUE_ITEM *q = conn_pool->conn_queue_head, *next = NULL;
          q != NULL; q = next)
     {
         next = q->next;
@@ -988,7 +1010,8 @@ server_clean_connection_pool_queue(SERVER *server)
         gwbuf_free(q->query_buf);
         q->next = NULL;
     }
-    server->conn_queue_head = server->conn_queue_tail = NULL;
-    server->pool_stats.n_queue_items = 0;
-    spinlock_release(&server->conn_queue_lock);
+    server_init_conn_pool_stats(conn_pool);
+    conn_pool->conn_queue_head = conn_pool->conn_queue_tail = NULL;
+    conn_pool->pool_stats.n_queue_items = 0;
+    spinlock_release(&conn_pool->conn_queue_lock);
 }

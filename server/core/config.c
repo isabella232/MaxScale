@@ -856,18 +856,18 @@ process_config_context(CONFIG_CONTEXT *context)
 			}
 			if (obj->element)
 			{
-                                SERVER *server = obj->element;
-                                server->persistpoolmax = strtol(config_get_value_string(obj->parameters, "persistpoolmax"), NULL, 0);
-                                server->persistmaxtime = strtol(config_get_value_string(obj->parameters, "persistmaxtime"), NULL, 0);
-				/* server connection pool size */
-				server->conn_pool_size = strtol(config_get_value_string(obj->parameters, "connection_pool_size"), NULL, 0);
-				if (server->conn_pool_size > 0) {
-				    server->persistpoolmax = MAX(server->conn_pool_size, server->persistpoolmax);
-				    /* ensure pooling connections have large timeout */
-				    server->persistmaxtime = MAX(86400, server->persistmaxtime);
-				    /* mark proxy server have server connection pooling enabled */
-				    gateway.server_connection_pools = 1;
-				}
+			        SERVER *server = obj->element;
+			        server->persistpoolmax = strtol(config_get_value_string(obj->parameters, "persistpoolmax"), NULL, 0);
+			        server->persistmaxtime = strtol(config_get_value_string(obj->parameters, "persistmaxtime"), NULL, 0);
+			        /* server connection pool size */
+			        server->conn_pool.conn_pool_size = strtol(config_get_value_string(obj->parameters, "connection_pool_size"), NULL, 0);
+			        if (server->conn_pool.conn_pool_size > 0) {
+			            server->persistpoolmax = MAX(server->conn_pool.conn_pool_size, server->persistpoolmax);
+			            /* ensure pooling connections have large timeout */
+			            server->persistmaxtime = MAX(86400, server->persistmaxtime);
+			            /* mark proxy server have server connection pooling enabled */
+			            gateway.server_connection_pools = 1;
+			        }
 				CONFIG_PARAMETER *params = obj->parameters;
 				while (params)
 				{

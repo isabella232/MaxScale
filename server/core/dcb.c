@@ -1794,6 +1794,9 @@ dcb_close(DCB *dcb)
 /**
  * Add DCB to persistent pool if it qualifies, close otherwise
  *
+ * Airproxy client authentication connections will not park in the persistent
+ * connections pool unless the pool has not fully bootstrapped.
+ *
  * @param dcb	The DCB to go to persistent pool or be closed
  * @return      bool - whether the DCB was added to the pool
  *
@@ -1811,7 +1814,7 @@ dcb_maybe_add_persistent(DCB *dcb)
         && !dcb->dcb_errhandle_called
         && !(dcb->flags & DCBF_HUNG)
         && (poolcount = dcb_persistent_clean_count(dcb, false)) < dcb->server->persistpoolmax
-        && (!DCB_IS_IN_AUTH_PHASE(dcb) || dcb->server->pool_stats.n_pool_conns < dcb->server->persistpoolmax))
+        && (!config_connection_pool_enabled() || !DCB_IS_IN_AUTH_PHASE(dcb) || !SERVER_CONN_POOL_FULL(dcb->server)))
     {
         LOGIF(LD, (skygw_log_write(
             LOGFILE_DEBUG,
@@ -1828,12 +1831,16 @@ dcb_maybe_add_persistent(DCB *dcb)
         spinlock_release(&dcb->server->persistlock);
         atomic_add(&dcb->server->stats.n_persistent, 1);
         atomic_add(&dcb->server->stats.n_current, -1);
-        /* count in this new backend connection in server connection pool since 
-	 * pool size has not met configured max */
+        /* Airproxy count in this new backend connection in server connection pool
+	 * since pool size has not met configured max */
         if (DCB_IS_IN_AUTH_PHASE(dcb)) {
-            atomic_add(&dcb->server->pool_stats.n_pool_conns, 1);
+            atomic_add(&dcb->server->conn_pool.pool_stats.n_pool_conns, 1);
             DCB_SET_IN_CONN_POOL(dcb);
             DCB_CLR_IN_AUTH_PHASE(dcb);
+        }
+        /* Airproxy keeps track of connections parked in pool */
+        if (DCB_IS_IN_CONN_POOL(dcb)) {
+            atomic_add(&dcb->server->conn_pool.pool_stats.n_parked_conns, 1);
         }
         return true;
     }
@@ -1884,7 +1891,7 @@ dcb_close_finish(DCB *dcb)
         if (0 == dcb->persistentstart) atomic_add(&dcb->server->stats.n_current, -1);
         /* Airproxy adjust connection pool stats */
         if (DCB_IS_IN_CONN_POOL(dcb)) {
-            atomic_add(&dcb->server->pool_stats.n_pool_conns, -1);
+            atomic_add(&dcb->server->conn_pool.pool_stats.n_pool_conns, -1);
             DCB_CLR_IN_CONN_POOL(dcb);
         }
     }
