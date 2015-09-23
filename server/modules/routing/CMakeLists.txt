@@ -5,6 +5,10 @@ if(BUILD_TESTS)
   install(TARGETS testroute DESTINATION ${MAXSCALE_LIBDIR})
 endif()
 
+add_library(connectionpool SHARED connectionpool.c)
+target_link_libraries(connectionpool log_manager)
+install(TARGETS connectionpool DESTINATION ${MAXSCALE_LIBDIR})
+
 add_library(readconnroute SHARED readconnroute.c)
 target_link_libraries(readconnroute log_manager)
 install(TARGETS readconnroute DESTINATION ${MAXSCALE_LIBDIR})

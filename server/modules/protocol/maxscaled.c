@@ -88,9 +88,7 @@ static GWPROTOCOL MyObject = {
 	maxscaled_close,		/**< Close			 */
 	maxscaled_listen,		/**< Create a listener		 */
 	NULL,				/**< Authentication		 */
-	NULL,				/**< Session			 */
-	NULL,                           /**< Airproxy connections pool   */
-	NULL                            /**< Airproxy connection auth callback */
+	NULL				/**< Session			 */
 	};
 
 /**

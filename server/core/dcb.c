@@ -79,6 +79,7 @@
 #include <log_manager.h>
 #include <hashtable.h>
 #include <hk_heartbeat.h>
+#include <connectionpool.h>
 
 /** Defined in log_manager.cc */
 extern int            lm_enabled_logfiles_bitmask;
@@ -3234,7 +3235,7 @@ bool dcb_park_server_connection_pool(DCB *dcb)
             pthread_self(), dcb, dcb->server)));
     } else if (DCB_IS_IN_AUTH_PHASE(dcb)) {
         /* close temp backend connection used for client auth */
-        dcb->func.pool_auth_cb(dcb);
+        dcb->conn_pool_func->pool_auth_cb(dcb);
     }
     return ret;
 }

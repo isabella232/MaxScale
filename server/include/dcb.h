@@ -65,6 +65,8 @@ struct service;
 
 struct dcb;
 
+struct conn_pool_func;
+
     /**
 	 * @verbatim
      * The operations that can be performed on the descriptor
@@ -101,8 +103,6 @@ typedef struct gw_protocol {
 	int		(*listen)(struct dcb *, char *);
 	int		(*auth)(struct dcb *, struct server *, struct session *, GWBUF *);
 	int		(*session)(struct dcb *, void *);
-	int		(*pool)(struct dcb *);
-	int             (*pool_auth_cb)(struct dcb *);
 } GWPROTOCOL;
 
 /**
@@ -276,6 +276,8 @@ typedef struct dcb {
     SSL* ssl; /*< SSL struct for connection */
     int             dcb_port;       /**< port of target server */
     skygw_chk_t     dcb_chk_tail;
+
+	struct conn_pool_func *conn_pool_func; /**< connection pooling callbacks */
 	void           *rses_brefs; /**< connection pooling backend_ref */
 	int             rses_bref_index; /**< backend_ref index */
 	int             conn_pool_state; /**< connection pool state */

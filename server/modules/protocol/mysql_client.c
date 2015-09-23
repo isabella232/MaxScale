@@ -100,9 +100,7 @@ static GWPROTOCOL MyObject = {
 	gw_client_close,			/* Close			 */
 	gw_MySQLListener,			/* Listen			 */
 	NULL,					/* Authentication		 */
-	NULL,					/* Session			 */
-	NULL,                                   /* Airproxy connections pool     */
-	NULL                                    /* Airproxy connection auth callback */
+	NULL					/* Session			 */
 };
 
 /**

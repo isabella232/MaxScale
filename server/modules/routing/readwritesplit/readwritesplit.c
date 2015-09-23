@@ -34,6 +34,7 @@
 #include <modinfo.h>
 #include <modutil.h>
 #include <mysql_client_server_protocol.h>
+#include <connectionpool.h>
 
 MODULE_INFO 	info = {
 	MODULE_API_ROUTER,
@@ -316,10 +317,17 @@ static ROUTER_INSTANCE* instances;
 static int hashkeyfun(void* key);
 static int hashcmpfun (void *, void *);
 
-static void init_router_session_queue_item(ROUTER_CLIENT_SES *rses);
 static void init_connection_pool_dcb(DCB* backend_dcb, backend_ref_t *brefs, int bref_idx);
 static int try_server_connection(ROUTER_CLIENT_SES *rses, backend_ref_t *bref);
 static int enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf);
+static int server_backend_connection_pool_cb(DCB *backend_dcb);
+static int server_backend_connection_pool_link_cb(DCB *backend_dcb, int link_mode, void *arg);
+
+static CONN_POOL_FUNC conn_pool_cb = {
+  server_backend_connection_pool_cb,
+  server_backend_auth_connection_close_cb,
+  server_backend_connection_pool_link_cb
+};
 
 /* Airproxy checks backend server connection pool for available backend_dcb,
  * iff connection pooling is enabled and the backend_ref is marked IN_POOL
@@ -929,7 +937,7 @@ static void* newSession(
         client_rses->rses_nbackends    = router_nservers; /*< # of backend servers */
         client_rses->rses_bref_queued  = NULL; /* Airproxy pool queued */
 	/* initialize embedded POOL_QUEUE_ITEM to point to this router session */
-	init_router_session_queue_item(client_rses);
+	pool_init_queue_item(&client_rses->rses_queue_item, client_rses);
 
 	if(client_rses->rses_config.rw_max_slave_conn_percent)
 	{
@@ -5637,13 +5645,10 @@ static backend_ref_t* get_root_master_bref(
  * Airbnb connection proxy read write split router specific callbacks
  */
 
-static void
-init_router_session_queue_item(ROUTER_CLIENT_SES *rses)
-{
-    rses->rses_queue_item.router_session = rses;
-    rses->rses_queue_item.query_buf = NULL;
-    rses->rses_queue_item.next = NULL;
-}
+typedef struct {
+    ROUTER_CLIENT_SES *router_ses;
+    backend_ref_t *router_bref;
+} POOL_BACKEND_REF;
 
 static void
 link_dcb_backend_ref(DCB *backend_dcb, ROUTER_CLIENT_SES *rses, backend_ref_t *bref)
@@ -5678,78 +5683,23 @@ unlink_dcb_backend_ref(DCB *backend_dcb)
 }
 
 static int
-park_connection(DCB *backend_dcb)
-{
-    int rc = 0;
-    SESSION *session = NULL;
-    backend_ref_t *backend_refs = (backend_ref_t *)backend_dcb->rses_brefs;
-
-    if (backend_dcb->state != DCB_STATE_POLLING) {
-        return 0;
-    }
-
-    ss_dassert(BREF_IS_IN_USE(&backend_refs[backend_dcb->rses_bref_index]));
-    ss_dassert(backend_dcb->session != NULL);
-    /* add backend DCB to server persistent connections pool */
-    if (dcb_park_server_connection_pool(backend_dcb)) {
-	unlink_dcb_backend_ref(backend_dcb);
-        rc = 1;
-    }
-    return rc;
-}
-
-static bool
-unpark_connection(DCB **p_dcb, ROUTER_CLIENT_SES *rses, backend_ref_t *bref)
-{
-    SESSION *client_session = NULL;
-    SERVER *server = NULL;
-    DCB *dcb = NULL;
-
-    server = bref->bref_backend->backend_server;
-    ss_dassert(server != NULL);
-    client_session = rses->client_dcb->session;
-    ss_dassert(client_session != NULL);
-
-    dcb = server_get_persistent(server,
-                                rses->client_dcb->user,
-                                server->protocol);
-    if (dcb == NULL)
-        return false;
-
-    LOGIF(LD, (skygw_log_write(
-        LOGFILE_DEBUG,
-        "%lu [unpark_connection] pick up DCB %p for session %p query routing",
-        pthread_self(), dcb, client_session)));
-
-    /* link the backend connection with client session */
-    if (!session_link_dcb(client_session, dcb)) {
-        LOGIF(LD, (skygw_log_write(
-            LOGFILE_DEBUG,
-            "%lu [unpark_connection] Failed to link to session %p, the "
-            "session has been removed.\n",
-            pthread_self(), client_session)));
-        /* park the connection back in server pool */
-        dcb_add_server_persistent_connection_fast(dcb);
-        // FIXME(liang) distinguish disconnected client_session from no dcb avail
-        return false;
-    }
-
-    link_dcb_backend_ref(dcb, rses, bref);
-    return true;
-}
-
-static int
 try_server_connection(ROUTER_CLIENT_SES *rses, backend_ref_t *bref)
 {
     SESSION *client_session = NULL;
     SERVER *server = NULL;
     DCB *dcb = NULL;
+    POOL_BACKEND_REF pool_bref;
 
     if (rses == NULL || rses->client_dcb == NULL || bref == NULL || bref->bref_backend == NULL)
         return -1;
-    ss_dassert(SERVER_USE_CONN_POOL(bref->bref_backend->backend_server));
+    server = bref->bref_backend->backend_server;
+    client_session = rses->client_dcb->session;
+    ss_dassert(SERVER_USE_CONN_POOL(server));
     ss_dassert(bref->bref_dcb == NULL);
-    if (unpark_connection(&bref->bref_dcb, rses, bref))
+    pool_bref.router_ses = rses;
+    pool_bref.router_bref = bref;
+    if (pool_unpark_connection(&bref->bref_dcb, client_session, server,
+			       rses->client_dcb->user, &pool_bref))
         return 0;
 
     /* no available backend connection, router session remembers which backend
@@ -5880,31 +5830,24 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
     }
 
     if (park_dcb) {
-        park_connection(backend_dcb);
+        pool_park_connection(backend_dcb);
     }
 
     return 0;
 }
 
-/**
- * This callback is to terminate a server connection that had been used to complete
- * client connection authentication with backend server. A new client connection
- * always complete authentication with backend server, and it may create a backend
- * connection to MySQL server for that. Upon completion of authentication, it will
- * either park the connection in the pool or close it if the pool has been fully
- * bootstraped.
- */
 static int
-server_backend_auth_connection_close_cb(DCB *backend_dcb)
+server_backend_connection_pool_link_cb(DCB *backend_dcb, int link_mode,
+				       void *arg)
 {
-    LOGIF(LD, (skygw_log_write(
-        LOGFILE_DEBUG,
-        "%lu [RWSplit::server_backend_auth_connection_close_cb] "
-        "close connection auth DCB %p for server %p",
-        pthread_self(), backend_dcb, backend_dcb->server)));
-    session_unlink_dcb(backend_dcb->session, backend_dcb);
-    unlink_dcb_backend_ref(backend_dcb);
-    dcb_close(backend_dcb);
+    if (link_mode == 1) { /* link */
+        POOL_BACKEND_REF *pool_bref;
+        ss_dassert(arg != NULL);
+	pool_bref = (POOL_BACKEND_REF *)arg;
+        link_dcb_backend_ref(backend_dcb, pool_bref->router_ses, pool_bref->router_bref);
+    } else { /* unlink */
+        unlink_dcb_backend_ref(backend_dcb);
+    }
     return 0;
 }
 
@@ -5913,8 +5856,7 @@ init_connection_pool_dcb(DCB *backend_dcb, backend_ref_t *backend_refs,
 			 int backend_ref_idx)
 {
     /* register router specific connection pooling callback */
-    backend_dcb->func.pool = server_backend_connection_pool_cb;
-    backend_dcb->func.pool_auth_cb = server_backend_auth_connection_close_cb;
+    backend_dcb->conn_pool_func = &conn_pool_cb;
     /* register router session backend refererence back pointer */
     backend_dcb->rses_brefs = backend_refs;
     backend_dcb->rses_bref_index = backend_ref_idx;

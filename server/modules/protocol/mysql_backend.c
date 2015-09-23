@@ -21,6 +21,7 @@
 #include <skygw_utils.h>
 #include <log_manager.h>
 #include <modutil.h>
+#include <connectionpool.h>
 
 /*
  * MySQL Protocol module for handling the protocol between the gateway
@@ -93,9 +94,7 @@ static GWPROTOCOL MyObject = {
 	gw_backend_close,			/* Close			 */
 	NULL,					/* Listen			 */
 	gw_change_user,				/* Authentication		 */
-        NULL,                                   /* Session                       */
-	NULL,                                   /* Airproxy connection pool      */
-	NULL                                    /* Airproxy connection auth callback */
+        NULL                                    /* Session                       */
 };
 
 /*
@@ -622,8 +621,8 @@ static int gw_read_backend_event(DCB *dcb) {
 return_rc:
         /* Airproxy invokes connection pool callback */
         if (park_connection) {
-            ss_dassert(dcb != NULL && dcb->func.pool != NULL);
-            dcb->func.pool(dcb);
+            ss_dassert(dcb != NULL && dcb->conn_pool_func->pool_cb != NULL);
+            dcb->conn_pool_func->pool_cb(dcb);
         }
  
         return rc;

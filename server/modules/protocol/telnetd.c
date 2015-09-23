@@ -97,9 +97,7 @@ static GWPROTOCOL MyObject = {
 	telnetd_close,			/**< Close			 */
 	telnetd_listen,			/**< Create a listener		 */
 	NULL,				/**< Authentication		 */
-	NULL,				/**< Session			 */
-	NULL,                           /**< Airproxy connections pool   */
-	NULL                            /**< Airproxy connection auth callback */
+	NULL				/**< Session			 */
 	};
 
 static void 	telnetd_command(DCB *, unsigned char *cmd);
