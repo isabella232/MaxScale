@@ -92,6 +92,8 @@
 
 #include "modutil.h"
 
+#include "connectionpool.h"
+
 /** Defined in log_manager.cc */
 extern int            lm_enabled_logfiles_bitmask;
 extern size_t         log_ses_count[];
@@ -153,6 +155,18 @@ static int handle_state_switch(
     DCB* dcb,DCB_REASON reason, void * routersession);
 static SPINLOCK	instlock;
 static ROUTER_INSTANCE *instances;
+
+static void init_connection_pool_dcb(DCB *backend_dcb, ROUTER_CLIENT_SES *rses);
+static int try_server_connection_or_enqueue(DCB **p_dcb, ROUTER_CLIENT_SES *rses, GWBUF *querybuf);
+static int server_backend_connection_pool_cb(DCB *backend_dcb);
+static int server_backend_connection_pool_link_cb(DCB *backend_dcb, int link_mode, void *arg);
+
+/* Connection pooling callback functions */
+static CONN_POOL_FUNC conn_pool_cb = {
+    server_backend_connection_pool_cb,
+    server_backend_auth_connection_close_cb,
+    server_backend_connection_pool_link_cb
+};
 
 /**
  * Implementation of the mandatory version entry point
@@ -524,6 +538,9 @@ BACKEND *master_host = NULL;
 	}
 
 	client_rses->rses_capabilities = RCAP_TYPE_PACKET_INPUT;
+
+	/* initialize embedded queue item */
+	pool_init_queue_item(&client_rses->rses_queue_item, client_rses);
         
 	/*
 	 * We now have the server with the least connections.
@@ -558,6 +575,9 @@ BACKEND *master_host = NULL;
                          &handle_state_switch,
                          client_rses);
         inst->stats.n_sessions++;
+
+	/* set up backend connection DCB with pooling callback functors */
+	init_connection_pool_dcb(client_rses->backend_dcb, client_rses);
 
 	/**
          * Add this session to the list of active sessions.
@@ -717,6 +737,23 @@ routeQuery(ROUTER *instance, void *router_session, GWBUF *queue)
                 backend_dcb = router_cli_ses->backend_dcb;           
                 /** unlock */
                 rses_end_locked_router_action(router_cli_ses);
+        }
+
+        /* Airproxy checks for available backend connection in pool */
+        if (config_connection_pool_enabled() && backend_dcb == NULL)
+        {
+	    if (!(rses_is_closed || SERVER_IS_DOWN(router_cli_ses->backend->server)))
+            {
+                int ret = try_server_connection_or_enqueue(&backend_dcb, router_cli_ses, queue);
+                /* -1 means serious condition e.g. client session was gone */
+                rc = (ret != -1) ? 1 : 0;
+                /* found backend connection in pool */
+                if (ret == 0) {
+	            ss_dassert(backend_dcb != NULL);
+                } else {
+                    goto return_rc;
+                }
+            }
         }
 
         if (rses_is_closed ||  backend_dcb == NULL ||
@@ -1026,4 +1063,202 @@ static int handle_state_switch(DCB* dcb,DCB_REASON reason, void * routersession)
     }
 
     return 0;
+}
+
+/**
+ * Airbnb connection proxy read connection router pooling callbacks
+ */
+
+static void
+link_dcb_router_session(DCB *backend_dcb, ROUTER_CLIENT_SES *rses)
+{
+    /* dcb->user was cleared when added to persistent connections pool */
+    backend_dcb->user = strdup(backend_dcb->session->client->user);
+    /* link the backend_dcb with router session backend ref */
+    backend_dcb->rses_brefs = rses;
+    rses->backend_dcb = backend_dcb;
+    rses->rses_in_pool = false;
+}
+
+static void
+unlink_dcb_router_session(DCB *backend_dcb)
+{
+    ROUTER_CLIENT_SES *rses = (ROUTER_CLIENT_SES *)backend_dcb->rses_brefs;
+    /* mark router session backend ref as IN_POOL and reset DCB pointer */
+    rses->rses_in_pool = true;
+    rses->backend_dcb = NULL;
+    /* clear router session back pointer, it will be set when a backend_dcb
+     * is chosen to link with a client session */
+    backend_dcb->rses_brefs = NULL;
+}
+
+static int
+enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf)
+{
+    SERVER *server = NULL;
+    POOL_QUEUE_ITEM *queue_item = &rses->rses_queue_item;
+
+    ss_dassert(rses->backend_dcb == NULL);
+    server = rses->backend->server;
+    ss_dassert(server != NULL);
+
+    LOGIF(LD, (skygw_log_write(
+            LOGFILE_DEBUG,
+            "%lu [enqueue_server_connection_pool] router session %p to server %p "
+            "for client session %p client_dcb %p",
+            pthread_self(), rses, server,
+	    rses->rses_client_session, rses->rses_client_session->client)));
+    ss_dassert(queue_item->router_session == rses);
+    ss_dassert(queue_item->next == NULL);
+    queue_item->query_buf = querybuf;
+    server_enqueue_connection_pool_request(server, queue_item);
+
+    return 0;
+}
+
+/**
+ * This is the connection pool engaging entry point on the query route path.
+ * It first looks for an available connection in the pool. If no luck, it
+ * enqueues the router session in server connection pool. 
+ *
+ * @return  0 a connection is found and linked with the router session 
+ * @return  1 no connection and router session is enqueued.
+ * @return -1 faulty situation
+ *
+ * FIXME(liang) consolidate return value with failure scenario handling
+ */
+static int
+try_server_connection_or_enqueue(DCB **p_dcb, ROUTER_CLIENT_SES *rses,
+				 GWBUF *querybuf)
+{
+    int rc;
+    SESSION *client_session = NULL;
+
+    /* must acquire router session lock because caller has released it */
+    if (rses == NULL || !rses_begin_locked_router_action(rses))
+        return -1;
+
+    ss_dassert(rses->backend_dcb == NULL && rses->rses_client_session != NULL);
+    ss_dassert(SERVER_USE_CONN_POOL(rses->backend->server));
+    client_session = rses->rses_client_session;
+    if (pool_unpark_connection(&rses->backend_dcb, client_session,
+			       rses->backend->server,
+			       client_session->client->user, rses))
+    {
+        rc = 0;
+        *p_dcb = rses->backend_dcb;
+    }
+    /* no available backend connection, it will be queued in server connection pool */
+    else
+    {
+        GWBUF *querybuf_clone = gwbuf_clone(querybuf);
+        enqueue_server_connection_pool(rses, querybuf_clone);
+        rc = 1;
+    }
+
+    rses_end_locked_router_action(rses);
+    return rc;
+}
+
+static bool
+forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb)
+{
+    int rc;
+
+    LOGIF(LD, (skygw_log_write(
+            LOGFILE_DEBUG,
+            "%lu [forward_request_query] router session %p backend_dcb %p for server %p",
+            pthread_self(), rses, backend_dcb, backend_dcb->server)));
+
+    if (!rses_begin_locked_router_action(rses))
+        return false;
+
+    /* link backend dcb with the client router session queued in server pool */
+    link_dcb_router_session(backend_dcb, rses);
+    /* link backend dcb with the client session for response forwarding */
+    ss_dassert(rses->rses_client_session != NULL);
+    if (!session_link_dcb(rses->rses_client_session, backend_dcb)) {
+        return false;
+    }
+    rses_end_locked_router_action(rses);
+
+    /* forward query to backend server */
+    rc = backend_dcb->func.write(backend_dcb, querybuf);
+    if (rc != 1) {
+        LOGIF((LE|LT), (skygw_log_write_flush(
+            LOGFILE_ERROR, "Error : forward request query failed.")));
+        return false;
+    }
+    return true;
+}
+
+/**
+ * This callback is invoked at the end of router session, i.e. after result set
+ * forwarding from backend server to client. If there is pending request in
+ * queue, it picks up and serve it; else it returns to the connection pool.
+ */
+static int
+server_backend_connection_pool_cb(DCB *backend_dcb)
+{
+    bool park_dcb = true;
+    SERVER *server = NULL;
+    ROUTER_CLIENT_SES *rses = NULL;
+
+    /* FIXME(liang) should close it since it is in wrong state */
+    if (backend_dcb->state != DCB_STATE_POLLING)
+        return 0;
+    ss_dassert(backend_dcb->session != NULL);
+
+    rses = (ROUTER_CLIENT_SES *)backend_dcb->rses_brefs;
+    server = rses->backend->server;
+    ss_dassert(SERVER_USE_CONN_POOL(server));
+
+    /* check out existing connection pool request and serve directly, if any */
+    if (DCB_IS_IN_CONN_POOL(backend_dcb) && !SERVER_CONN_POOL_QUEUE_EMPTY(server)) {
+        POOL_QUEUE_ITEM *req = NULL;
+
+        /* unlink this backend connection from router session backend ref */
+        unlink_dcb_router_session(backend_dcb);
+        req = server_dequeue_connection_pool_request(server);
+        if (req != NULL) {
+            /* FIXME(liang) must send error to client if query routing failed */
+            forward_request_query((ROUTER_CLIENT_SES *)req->router_session,
+                                (GWBUF *)req->query_buf, backend_dcb);
+            /* clear the embedded POOL_QUEUE_ITEM, and query_buf should have
+	     * been consumed and therefore no need of gwbuf_free here */
+            req->query_buf = req->next = NULL;
+            park_dcb = false;
+        }
+    }
+
+    if (park_dcb) {
+        pool_park_connection(backend_dcb);
+    }
+
+    return 0;
+}
+
+static int
+server_backend_connection_pool_link_cb(DCB *backend_dcb, int link_mode,
+				       void *arg)
+{
+    if (link_mode == 1) { /* link */
+        ss_dassert(arg != NULL);
+        link_dcb_router_session(backend_dcb, (ROUTER_CLIENT_SES *)arg);
+    } else { /* unlink */
+        unlink_dcb_router_session(backend_dcb);
+    }
+    return 0;
+}
+
+static void
+init_connection_pool_dcb(DCB *backend_dcb, ROUTER_CLIENT_SES *rses)
+{
+    /* register router specific connection pooling callback */
+    backend_dcb->conn_pool_func = &conn_pool_cb;
+    /* register router session back pointer */
+    backend_dcb->rses_brefs = rses;
+    backend_dcb->rses_bref_index = -1;
+    /* back pointer to client session */
+    rses->rses_client_session = backend_dcb->session;
 }

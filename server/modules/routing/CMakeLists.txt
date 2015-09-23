@@ -10,7 +10,7 @@ target_link_libraries(connectionpool log_manager)
 install(TARGETS connectionpool DESTINATION ${MAXSCALE_LIBDIR})
 
 add_library(readconnroute SHARED readconnroute.c)
-target_link_libraries(readconnroute log_manager)
+target_link_libraries(readconnroute log_manager connectionpool)
 install(TARGETS readconnroute DESTINATION ${MAXSCALE_LIBDIR})
 
 add_library(debugcli SHARED debugcli.c debugcmd.c)

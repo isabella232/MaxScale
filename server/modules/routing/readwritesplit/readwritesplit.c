@@ -34,7 +34,8 @@
 #include <modinfo.h>
 #include <modutil.h>
 #include <mysql_client_server_protocol.h>
-#include <connectionpool.h>
+
+#include "connectionpool.h"
 
 MODULE_INFO 	info = {
 	MODULE_API_ROUTER,
@@ -5682,6 +5683,17 @@ unlink_dcb_backend_ref(DCB *backend_dcb)
     backend_dcb->rses_bref_index = -1;
 }
 
+/**
+ * This is the connection pool engaging entry point on the query route path.
+ * It first looks for an available connection in the pool. If no luck, it
+ * marks the router session for enqueuing in server connection pool. 
+ *
+ * @return  0 a connection is found and linked with the router session 
+ * @return  1 no connection and router session is marked for enqueuing.
+ * @return -1 faulty situation
+ *
+ * FIXME(liang) consolidate return value with failure scenario handling
+ */
 static int
 try_server_connection(ROUTER_CLIENT_SES *rses, backend_ref_t *bref)
 {
