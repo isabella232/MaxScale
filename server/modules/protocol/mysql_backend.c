@@ -847,6 +847,16 @@ static int gw_error_backend_event(DCB *dcb)
         session_state_t ses_state;
         
 	CHK_DCB(dcb);
+	/* Airproxy skips error handler if backend DCB is currently parked
+	 * in the pool. This is fine because it is not linked with any client
+	 * session. */
+	if (DCB_IS_PARKED_IN_POOL(dcb))
+	{
+	    LOGIF(LE, (skygw_log_write_flush(
+	        LOGFILE_ERROR,
+	        "Connection pooling DCB %p skips backend error event", dcb)));
+	    return 1;
+	}
 	session = dcb->session;
 	CHK_SESSION(session);
         rsession = session->router_session;

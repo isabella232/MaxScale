@@ -398,6 +398,8 @@ int dcb_drain_writeq_SSL(DCB *dcb);
 #define DCB_SET_ROUTER_SESSION(dcb, rses, bref_idx) \
   { dcb->dcb_conn_pool_data.rses_ref = rses; dcb->dcb_conn_pool_data.rses_bref_index = bref_idx; }
 
+#define DCB_IS_PARKED_IN_POOL(dcb) (DCB_IS_IN_CONN_POOL(dcb) && dcb->persistentstart != 0)
+
 void dcb_add_server_persistent_connection_fast(DCB*);
 bool dcb_park_server_connection_pool(DCB*);
 
