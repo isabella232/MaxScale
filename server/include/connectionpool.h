@@ -16,7 +16,7 @@ struct server_connection_pool_queue_item;
 struct conn_pool_func {
     int	(*pool_cb)(struct dcb *);
     int (*pool_auth_cb)(struct dcb *);
-    int (*pool_link_cb)(struct dcb *, int, void *);
+    int (*pool_link_cb)(struct dcb *, int, int, void *);
 };
 typedef struct conn_pool_func CONN_POOL_FUNC;
 

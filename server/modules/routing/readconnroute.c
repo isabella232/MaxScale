@@ -157,9 +157,11 @@ static SPINLOCK	instlock;
 static ROUTER_INSTANCE *instances;
 
 static void init_connection_pool_dcb(DCB *backend_dcb, ROUTER_CLIENT_SES *rses);
-static int try_server_connection_or_enqueue(DCB **p_dcb, ROUTER_CLIENT_SES *rses, GWBUF *querybuf);
+static int try_server_connection_or_enqueue(DCB **p_dcb, ROUTER_CLIENT_SES *rses,
+					    GWBUF *querybuf);
 static int server_backend_connection_pool_cb(DCB *backend_dcb);
-static int server_backend_connection_pool_link_cb(DCB *backend_dcb, int link_mode, void *arg);
+static int server_backend_connection_pool_link_cb(DCB *backend_dcb, int link_mode,
+						  int rses_locked, void *arg);
 
 /* Connection pooling callback functions */
 static CONN_POOL_FUNC conn_pool_cb = {
@@ -1092,7 +1094,7 @@ unlink_dcb_router_session(DCB *backend_dcb)
     DCB_SET_ROUTER_SESSION(backend_dcb, NULL, -1);
 }
 
-static int
+static void
 enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf)
 {
     SERVER *server = NULL;
@@ -1112,8 +1114,6 @@ enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf)
     ss_dassert(queue_item->next == NULL);
     queue_item->query_buf = querybuf;
     server_enqueue_connection_pool_request(server, queue_item);
-
-    return 0;
 }
 
 /**
@@ -1178,6 +1178,7 @@ forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb
     /* link backend dcb with the client session for response forwarding */
     ss_dassert(rses->rses_client_session != NULL);
     if (!session_link_dcb(rses->rses_client_session, backend_dcb)) {
+        rses_end_locked_router_action(rses);
         return false;
     }
     rses_end_locked_router_action(rses);
@@ -1196,6 +1197,9 @@ forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb
  * This callback is invoked at the end of router session, i.e. after result set
  * forwarding from backend server to client. If there is pending request in
  * queue, it picks up and serve it; else it returns to the connection pool.
+ *
+ * It assumes that the caller have locked router session for connection DCB
+ * runtime data change.
  */
 static int
 server_backend_connection_pool_cb(DCB *backend_dcb)
@@ -1206,10 +1210,14 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
 
     /* FIXME(liang) should close it since it is in wrong state */
     if (backend_dcb->state != DCB_STATE_POLLING)
-        return 0;
+        return 1;
     ss_dassert(backend_dcb->session != NULL);
-
     rses = (ROUTER_CLIENT_SES *)DCB_GET_ROUTER_SESSION(backend_dcb);
+
+    /* lock router session for connection DCB runtime linkage state change */
+    if (!rses_begin_locked_router_action(rses))
+        return 1;
+
     server = rses->backend->server;
     ss_dassert(SERVER_USE_CONN_POOL(server));
 
@@ -1231,6 +1239,8 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
         }
     }
 
+    rses_end_locked_router_action(rses);
+
     if (park_dcb) {
         pool_park_connection(backend_dcb);
     }
@@ -1240,14 +1250,27 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
 
 static int
 server_backend_connection_pool_link_cb(DCB *backend_dcb, int link_mode,
-				       void *arg)
+				       int rses_locked, void *arg)
 {
+    ROUTER_CLIENT_SES *rses = NULL;
+    ss_dassert(link_mode == 0 || arg != NULL);
+    rses = (ROUTER_CLIENT_SES*)(link_mode == 1 ?
+				arg : DCB_GET_ROUTER_SESSION(backend_dcb));
+    if (!rses_locked) {
+        ss_dassert(rses != NULL);
+        if (!rses_begin_locked_router_action(rses))
+	    return 1;
+    }
+
     if (link_mode == 1) { /* link */
         ss_dassert(arg != NULL);
         link_dcb_router_session(backend_dcb, (ROUTER_CLIENT_SES *)arg);
     } else { /* unlink */
         unlink_dcb_router_session(backend_dcb);
     }
+
+    if (!rses_locked)
+        rses_end_locked_router_action(rses);
     return 0;
 }
 

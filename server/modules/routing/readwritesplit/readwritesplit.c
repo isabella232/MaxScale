@@ -321,9 +321,10 @@ static int hashcmpfun (void *, void *);
 static void init_connection_pool_dcb(DCB* backend_dcb, ROUTER_CLIENT_SES *rses,
 				     backend_ref_t *brefs, int bref_idx);
 static int try_server_connection(ROUTER_CLIENT_SES *rses, backend_ref_t *bref);
-static int enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf);
+static void enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf);
 static int server_backend_connection_pool_cb(DCB *backend_dcb);
-static int server_backend_connection_pool_link_cb(DCB *backend_dcb, int link_mode, void *arg);
+static int server_backend_connection_pool_link_cb(DCB *backend_dcb, int link_mode,
+						  int rses_locked, void *arg);
 
 static CONN_POOL_FUNC conn_pool_cb = {
   server_backend_connection_pool_cb,
@@ -5694,7 +5695,10 @@ unlink_dcb_backend_ref(DCB *backend_dcb)
 /**
  * This is the connection pool engaging entry point on the query route path.
  * It first looks for an available connection in the pool. If no luck, it
- * marks the router session for enqueuing in server connection pool. 
+ * marks the router session for enqueuing in server connection pool.
+ *
+ * It assumes that the caller have locked router session for connection DCB
+ * runtime data change.
  *
  * @return  0 a connection is found and linked with the router session 
  * @return  1 no connection and router session is marked for enqueuing.
@@ -5709,6 +5713,9 @@ try_server_connection(ROUTER_CLIENT_SES *rses, backend_ref_t *bref)
     SERVER *server = NULL;
     DCB *dcb = NULL;
     POOL_BACKEND_REF pool_bref;
+
+    /* The caller should have acquired router session lock already, and it'd be
+     * nice if we could verify this thread is the owner of router session lock */
 
     if (rses == NULL || rses->client_dcb == NULL || bref == NULL || bref->bref_backend == NULL)
         return -1;
@@ -5729,11 +5736,20 @@ try_server_connection(ROUTER_CLIENT_SES *rses, backend_ref_t *bref)
     return 1;
 }
 
-static int
+/**
+ * This is used by router code to enqueue a router session in server
+ * connection pool queue when it could not find an available connection
+ * DCB to link with. It assumes that the caller have locked router
+ * session for DCB runtime data change.
+ */
+static void
 enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf)
 {
     SERVER *server = NULL;
     POOL_QUEUE_ITEM *queue_item = &rses->rses_queue_item;
+
+    /* The caller should have acquired router session lock already, and it'd be
+     * nice if we could verify this thread is the owner of router session lock */
 
     ss_dassert(rses->rses_bref_queued != NULL);
     server = rses->rses_bref_queued->bref_backend->backend_server;
@@ -5748,8 +5764,6 @@ enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf)
     ss_dassert(queue_item->next == NULL);
     queue_item->query_buf = querybuf;
     server_enqueue_connection_pool_request(server, queue_item);
-
-    return 0;
 }
 
 static bool
@@ -5777,6 +5791,7 @@ forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb
     client_session = rses->client_dcb->session;
     ss_dassert(client_session != NULL);
     if (!session_link_dcb(client_session, backend_dcb)) {
+        rses_end_locked_router_action(rses);
         return false;
     }
 
@@ -5815,13 +5830,19 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
 
     /* FIXME(liang) should close it since it is in wrong state */
     if (backend_dcb->state != DCB_STATE_POLLING)
-        return 0;
+        return 1;
+
+    /* lock down router session */
+    ss_dassert(backend_dcb->session != NULL);
+    rses = (ROUTER_CLIENT_SES *)DCB_GET_ROUTER_SESSION(backend_dcb);
+    if (!rses_begin_locked_router_action(rses)) {
+        return 1;
+    }
 
     /* keep client session and backend connection linked, if it is known to be
      * within transaction context */
-    ss_dassert(backend_dcb->session != NULL);
-    rses = (ROUTER_CLIENT_SES *)DCB_GET_ROUTER_SESSION(backend_dcb);
     if (rses->rses_transaction_active) {
+        rses_end_locked_router_action(rses);
         return 0;
     }
 
@@ -5851,6 +5872,8 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
         }
     }
 
+    rses_end_locked_router_action(rses);
+
     if (park_dcb) {
         pool_park_connection(backend_dcb);
     }
@@ -5860,16 +5883,29 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
 
 static int
 server_backend_connection_pool_link_cb(DCB *backend_dcb, int link_mode,
-				       void *arg)
+				       int rses_locked, void *arg)
 {
+    ROUTER_CLIENT_SES *rses = NULL;
+    ss_dassert(link_mode == 0 || arg != NULL);
+    rses = (ROUTER_CLIENT_SES*) (link_mode == 1 ?
+				 ((POOL_BACKEND_REF*)arg)->router_ses :
+				 DCB_GET_ROUTER_SESSION(backend_dcb));
+    if (!rses_locked) {
+        ss_dassert(rses != NULL);
+        if (!rses_begin_locked_router_action(rses))
+	    return 1;
+    }
+
     if (link_mode == 1) { /* link */
-        POOL_BACKEND_REF *pool_bref;
-        ss_dassert(arg != NULL);
-	pool_bref = (POOL_BACKEND_REF *)arg;
-        link_dcb_backend_ref(backend_dcb, pool_bref->router_ses, pool_bref->router_bref);
+        POOL_BACKEND_REF *pb = (POOL_BACKEND_REF *)arg;
+        link_dcb_backend_ref(backend_dcb, pb->router_ses, pb->router_bref);
     } else { /* unlink */
         unlink_dcb_backend_ref(backend_dcb);
     }
+
+    if (!rses_locked)
+        rses_end_locked_router_action(rses);
+
     return 0;
 }
 

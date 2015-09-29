@@ -25,27 +25,37 @@ pool_init_queue_item(POOL_QUEUE_ITEM *queue_item, void *rses)
     queue_item->next = NULL;
 }
 
+/**
+ * The helper function that returns the backend connection to its server
+ * connection pool. Because a pooling connection returns to pool after it
+ * have forwarded response to client session, it is called without having
+ * client's router session lock acquired.
+ */
 int
 pool_park_connection(DCB *backend_dcb)
 {
     bool rc = 0;
     SESSION *session = NULL;
-    //backend_ref_t *backend_refs = (backend_ref_t *)backend_dcb->rses_brefs;
 
     if (backend_dcb->state != DCB_STATE_POLLING) {
         return 0;
     }
 
-    //ss_dassert(BREF_IS_IN_USE(&backend_refs[backend_dcb->rses_bref_index]));
     ss_dassert(backend_dcb->session != NULL);
     /* add backend DCB to server persistent connections pool */
     if (dcb_park_server_connection_pool(backend_dcb)) {
-        backend_dcb->conn_pool_func->pool_link_cb(backend_dcb, 0, NULL);
+        backend_dcb->conn_pool_func->pool_link_cb(backend_dcb, 0, 0, NULL);
         rc = 1;
     }
     return rc;
 }
 
+/**
+ * The helper function that looks for backend connection in the server
+ * connection pool and links with the client session.
+ *
+ * @note It should be called with router session lock acquired.
+ */
 int
 pool_unpark_connection(DCB **p_dcb, SESSION *client_session, SERVER *server,
 		       char *user, void *cb_arg)
@@ -76,7 +86,7 @@ pool_unpark_connection(DCB **p_dcb, SESSION *client_session, SERVER *server,
     }
 
     /* link backend DCB with router specific data structure */
-    dcb->conn_pool_func->pool_link_cb(dcb, 1, cb_arg);
+    dcb->conn_pool_func->pool_link_cb(dcb, 1, 1, cb_arg);
     return 1;
 }
 
@@ -90,7 +100,7 @@ server_backend_auth_connection_close_cb(DCB *backend_dcb)
         pthread_self(), backend_dcb, backend_dcb->server)));
     session_unlink_dcb(backend_dcb->session, backend_dcb);
     /* unlink the backend dcb */
-    backend_dcb->conn_pool_func->pool_link_cb(backend_dcb, 0, NULL);
+    backend_dcb->conn_pool_func->pool_link_cb(backend_dcb, 0, 0, NULL);
     dcb_close(backend_dcb);
     return 0;
 }
