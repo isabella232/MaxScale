@@ -217,6 +217,17 @@ typedef struct dcb_callback {
 
 
 /**
+ * Airbnb connection proxy runtime DCB pooling status data. A non-NULL
+ * back pointer to some router session means that the backend connection
+ * is linked with some client session for query routing.
+ */
+typedef struct {
+	void   *rses_ref;        /**< back pointer to router session */
+	int     rses_bref_index; /**< router session backend_ref index */
+	int     state;           /**< connection pool state */
+} CONN_POOL_DATA;
+
+/**
  * Descriptor Control Block
  *
  * A wrapper for a network descriptor within the gateway, it contains all the
@@ -278,9 +289,7 @@ typedef struct dcb {
     skygw_chk_t     dcb_chk_tail;
 
 	struct conn_pool_func *conn_pool_func; /**< connection pooling callbacks */
-	void           *rses_brefs; /**< connection pooling backend_ref */
-	int             rses_bref_index; /**< backend_ref index */
-	int             conn_pool_state; /**< connection pool state */
+	CONN_POOL_DATA  dcb_conn_pool_data; /**< connection pool runtime state */
 } DCB;
 
 /**
@@ -376,13 +385,18 @@ int dcb_drain_writeq_SSL(DCB *dcb);
 #define DCB_CONN_POOL_IN_AUTH_PHASE 0x0001  /**<< is in authentication phase */
 #define DCB_CONN_POOL_IN_POOL       0x0002  /**<< is member of server connection pool */
 
-#define DCB_SET_IN_AUTH_PHASE(dcb) { dcb->conn_pool_state |= DCB_CONN_POOL_IN_AUTH_PHASE; }
-#define DCB_CLR_IN_AUTH_PHASE(dcb) { dcb->conn_pool_state &= ~DCB_CONN_POOL_IN_AUTH_PHASE; }
-#define DCB_IS_IN_AUTH_PHASE(dcb)  (dcb->conn_pool_state & DCB_CONN_POOL_IN_AUTH_PHASE)
+#define DCB_SET_IN_AUTH_PHASE(dcb) { dcb->dcb_conn_pool_data.state |= DCB_CONN_POOL_IN_AUTH_PHASE; }
+#define DCB_CLR_IN_AUTH_PHASE(dcb) { dcb->dcb_conn_pool_data.state &= ~DCB_CONN_POOL_IN_AUTH_PHASE; }
+#define DCB_IS_IN_AUTH_PHASE(dcb)  (dcb->dcb_conn_pool_data.state & DCB_CONN_POOL_IN_AUTH_PHASE)
 
-#define DCB_SET_IN_CONN_POOL(dcb) { dcb->conn_pool_state |= DCB_CONN_POOL_IN_POOL; }
-#define DCB_CLR_IN_CONN_POOL(dcb) { dcb->conn_pool_state &= ~DCB_CONN_POOL_IN_POOL; }
-#define DCB_IS_IN_CONN_POOL(dcb)  (dcb->conn_pool_state & DCB_CONN_POOL_IN_POOL)
+#define DCB_SET_IN_CONN_POOL(dcb) { dcb->dcb_conn_pool_data.state |= DCB_CONN_POOL_IN_POOL; }
+#define DCB_CLR_IN_CONN_POOL(dcb) { dcb->dcb_conn_pool_data.state &= ~DCB_CONN_POOL_IN_POOL; }
+#define DCB_IS_IN_CONN_POOL(dcb)  (dcb->dcb_conn_pool_data.state & DCB_CONN_POOL_IN_POOL)
+
+#define DCB_GET_ROUTER_SESSION(dcb) (dcb->dcb_conn_pool_data.rses_ref)
+#define DCB_GET_BREF_INDEX(dcb) (dcb->dcb_conn_pool_data.rses_bref_index)
+#define DCB_SET_ROUTER_SESSION(dcb, rses, bref_idx) \
+  { dcb->dcb_conn_pool_data.rses_ref = rses; dcb->dcb_conn_pool_data.rses_bref_index = bref_idx; }
 
 void dcb_add_server_persistent_connection_fast(DCB*);
 bool dcb_park_server_connection_pool(DCB*);

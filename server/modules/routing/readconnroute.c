@@ -1075,7 +1075,7 @@ link_dcb_router_session(DCB *backend_dcb, ROUTER_CLIENT_SES *rses)
     /* dcb->user was cleared when added to persistent connections pool */
     backend_dcb->user = strdup(backend_dcb->session->client->user);
     /* link the backend_dcb with router session backend ref */
-    backend_dcb->rses_brefs = rses;
+    DCB_SET_ROUTER_SESSION(backend_dcb, rses, -1);
     rses->backend_dcb = backend_dcb;
     rses->rses_in_pool = false;
 }
@@ -1083,13 +1083,13 @@ link_dcb_router_session(DCB *backend_dcb, ROUTER_CLIENT_SES *rses)
 static void
 unlink_dcb_router_session(DCB *backend_dcb)
 {
-    ROUTER_CLIENT_SES *rses = (ROUTER_CLIENT_SES *)backend_dcb->rses_brefs;
+    ROUTER_CLIENT_SES *rses = (ROUTER_CLIENT_SES *)DCB_GET_ROUTER_SESSION(backend_dcb);
     /* mark router session backend ref as IN_POOL and reset DCB pointer */
     rses->rses_in_pool = true;
     rses->backend_dcb = NULL;
     /* clear router session back pointer, it will be set when a backend_dcb
      * is chosen to link with a client session */
-    backend_dcb->rses_brefs = NULL;
+    DCB_SET_ROUTER_SESSION(backend_dcb, NULL, -1);
 }
 
 static int
@@ -1209,7 +1209,7 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
         return 0;
     ss_dassert(backend_dcb->session != NULL);
 
-    rses = (ROUTER_CLIENT_SES *)backend_dcb->rses_brefs;
+    rses = (ROUTER_CLIENT_SES *)DCB_GET_ROUTER_SESSION(backend_dcb);
     server = rses->backend->server;
     ss_dassert(SERVER_USE_CONN_POOL(server));
 
@@ -1257,8 +1257,7 @@ init_connection_pool_dcb(DCB *backend_dcb, ROUTER_CLIENT_SES *rses)
     /* register router specific connection pooling callback */
     backend_dcb->conn_pool_func = &conn_pool_cb;
     /* register router session back pointer */
-    backend_dcb->rses_brefs = rses;
-    backend_dcb->rses_bref_index = -1;
+    DCB_SET_ROUTER_SESSION(backend_dcb, rses, -1);
     /* back pointer to client session */
     rses->rses_client_session = backend_dcb->session;
 }

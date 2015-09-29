@@ -113,6 +113,8 @@ static void dcb_write_SSL_error_report (DCB *dcb, int ret, int ssl_errno);
 int dcb_bytes_readable_SSL (DCB *dcb, int nread);
 void dcb_log_ssl_read_error(DCB *dcb, int ssl_errno, int rc);
 
+static void dcb_init_conn_pool_data(DCB *dcb);
+
 size_t dcb_get_session_id(
 	DCB *dcb)
 {
@@ -216,6 +218,8 @@ DCB	*newdcb;
     newdcb->remote = NULL;
     newdcb->user = NULL;
     newdcb->flags = 0;
+
+    dcb_init_conn_pool_data(newdcb);
 
     spinlock_acquire(&dcbspin);
     if (allDCBs == NULL)
@@ -3196,6 +3200,14 @@ void dcb_log_ssl_read_error(DCB *dcb, int ssl_errno, int rc)
 /**
  * Airbnb connection pooling proxy
  */
+
+static void dcb_init_conn_pool_data(DCB *dcb)
+{
+    CONN_POOL_DATA *cp = &dcb->dcb_conn_pool_data;
+    cp->rses_ref = NULL;
+    cp->rses_bref_index = -1;
+    cp->state = 0;
+}
 
 /**
  * Add a known reusable backend connection to server persistent connections pool.

@@ -318,7 +318,8 @@ static ROUTER_INSTANCE* instances;
 static int hashkeyfun(void* key);
 static int hashcmpfun (void *, void *);
 
-static void init_connection_pool_dcb(DCB* backend_dcb, backend_ref_t *brefs, int bref_idx);
+static void init_connection_pool_dcb(DCB* backend_dcb, ROUTER_CLIENT_SES *rses,
+				     backend_ref_t *brefs, int bref_idx);
 static int try_server_connection(ROUTER_CLIENT_SES *rses, backend_ref_t *bref);
 static int enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf);
 static int server_backend_connection_pool_cb(DCB *backend_dcb);
@@ -909,6 +910,8 @@ static void* newSession(
 		client_rses = NULL;
                 goto return_rses;
 	}
+        /* Airproxy backend connection DCB initialization requires early access to router session */
+        session->router_session = client_rses;
         succp = select_connect_backend_servers(&master_ref,
                                                backend_ref,
                                                router_nservers,
@@ -917,6 +920,8 @@ static void* newSession(
                                                client_rses->rses_config.rw_slave_select_criteria,
                                                session,
                                                router);
+        /* Airproxy cleans up residual effect after poolling connection DCB initialization */
+        session->router_session = NULL;
 
         rses_end_locked_router_action(client_rses);
         
@@ -3557,6 +3562,7 @@ static bool select_connect_backend_servers(
                                                 /* register router specific connection
                                                  * pooling callback */
 						init_connection_pool_dcb(backend_ref[i].bref_dcb,
+									 (ROUTER_CLIENT_SES*)session->router_session,
 									 backend_ref, i);
                                                 backend_ref[i].bref_state = 0;
                                                 bref_set_state(&backend_ref[i], 
@@ -3621,6 +3627,7 @@ static bool select_connect_backend_servers(
                                         /* register router specific connection
                                          * pooling callback */
 					init_connection_pool_dcb(backend_ref[i].bref_dcb,
+								 (ROUTER_CLIENT_SES*)session->router_session,
 								 backend_ref, i);
 
                                         backend_ref[i].bref_state = 0;
@@ -5663,8 +5670,8 @@ link_dcb_backend_ref(DCB *backend_dcb, ROUTER_CLIENT_SES *rses, backend_ref_t *b
     // backend_refs because it is object array but pointer array
 
     /* link the backend_dcb with router session backend ref */
-    backend_dcb->rses_brefs = rses->rses_backend_ref;
-    backend_dcb->rses_bref_index = bref - rses->rses_backend_ref;
+    int bref_index = bref - rses->rses_backend_ref;
+    DCB_SET_ROUTER_SESSION(backend_dcb, rses, bref_index);
     bref->bref_dcb = backend_dcb;
     bref_clear_state(bref, BREF_IN_POOL);
 }
@@ -5672,15 +5679,16 @@ link_dcb_backend_ref(DCB *backend_dcb, ROUTER_CLIENT_SES *rses, backend_ref_t *b
 static void
 unlink_dcb_backend_ref(DCB *backend_dcb)
 {
-    backend_ref_t *backend_refs = (backend_ref_t *)backend_dcb->rses_brefs;
-    backend_ref_t *bref = &backend_refs[backend_dcb->rses_bref_index];
+    ROUTER_CLIENT_SES *rses = (ROUTER_CLIENT_SES *)DCB_GET_ROUTER_SESSION(backend_dcb);
+    int bref_index = DCB_GET_BREF_INDEX(backend_dcb);
+    backend_ref_t *backend_refs = rses->rses_backend_ref;
+    backend_ref_t *bref = &backend_refs[bref_index];
     /* mark router session backend ref as IN_POOL and reset DCB pointer */
     bref_set_state(bref, BREF_IN_POOL);
     bref->bref_dcb = NULL;
     /* clear router session backend reference back pointer, it will be
      * set when a backend_dcb is chosen to link with a client session */
-    backend_dcb->rses_brefs = NULL;
-    backend_dcb->rses_bref_index = -1;
+    DCB_SET_ROUTER_SESSION(backend_dcb, NULL, -1);
 }
 
 /**
@@ -5803,6 +5811,7 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
     backend_ref_t *bref = NULL;
     SERVER *server = NULL;
     ROUTER_CLIENT_SES *rses = NULL;
+    int bref_index;
 
     /* FIXME(liang) should close it since it is in wrong state */
     if (backend_dcb->state != DCB_STATE_POLLING)
@@ -5811,17 +5820,18 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
     /* keep client session and backend connection linked, if it is known to be
      * within transaction context */
     ss_dassert(backend_dcb->session != NULL);
-    rses = backend_dcb->session->router_session;
+    rses = (ROUTER_CLIENT_SES *)DCB_GET_ROUTER_SESSION(backend_dcb);
     if (rses->rses_transaction_active) {
         return 0;
     }
 
-    backend_refs = (backend_ref_t *)backend_dcb->rses_brefs;
-    bref = &backend_refs[backend_dcb->rses_bref_index];
+    bref_index = DCB_GET_BREF_INDEX(backend_dcb);
+    backend_refs = rses->rses_backend_ref;
+    bref = &backend_refs[bref_index];
     server = bref->bref_backend->backend_server;
 
     ss_dassert(server == backend_dcb->server && SERVER_USE_CONN_POOL(server));
-    ss_dassert(BREF_IS_IN_USE(&backend_refs[backend_dcb->rses_bref_index]));
+    ss_dassert(BREF_IS_IN_USE(&backend_refs[bref_index]));
 
     /* check out existing connection pool request and serve directly, if any */
     if (DCB_IS_IN_CONN_POOL(backend_dcb) && !SERVER_CONN_POOL_QUEUE_EMPTY(server)) {
@@ -5864,14 +5874,14 @@ server_backend_connection_pool_link_cb(DCB *backend_dcb, int link_mode,
 }
 
 static void
-init_connection_pool_dcb(DCB *backend_dcb, backend_ref_t *backend_refs,
-			 int backend_ref_idx)
+init_connection_pool_dcb(DCB *backend_dcb, ROUTER_CLIENT_SES *rses,
+			 backend_ref_t *backend_refs, int backend_ref_idx)
 {
+    ss_dassert(rses != NULL && rses->rses_backend_ref == backend_refs);
     /* register router specific connection pooling callback */
     backend_dcb->conn_pool_func = &conn_pool_cb;
-    /* register router session backend refererence back pointer */
-    backend_dcb->rses_brefs = backend_refs;
-    backend_dcb->rses_bref_index = backend_ref_idx;
+    /* register router session and backend reference back pointer */
+    DCB_SET_ROUTER_SESSION(backend_dcb, rses, backend_ref_idx);
 }
 
 
