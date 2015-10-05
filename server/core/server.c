@@ -187,10 +187,10 @@ server_get_persistent(SERVER *server, char *user, const char *protocol)
                 spinlock_release(&server->persistlock);
                 atomic_add(&server->stats.n_persistent, -1);
                 atomic_add(&server->stats.n_current, 1);
-		/* Airproxy keeps track of connections parked in pool */
-		if (DCB_IS_IN_CONN_POOL(dcb)) {
-		    atomic_add(&server->conn_pool.pool_stats.n_parked_conns, -1);
-		}
+                /* Airproxy keeps track of connections parked in pool */
+                if (DCB_IS_IN_CONN_POOL(dcb)) {
+                    atomic_add(&server->conn_pool.pool_stats.n_parked_conns, -1);
+                }
                 return dcb;
             }
             else

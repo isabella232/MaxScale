@@ -1897,6 +1897,8 @@ dcb_close_finish(DCB *dcb)
         /* Airproxy adjust connection pool stats */
         if (DCB_IS_IN_CONN_POOL(dcb)) {
             atomic_add(&dcb->server->conn_pool.pool_stats.n_pool_conns, -1);
+            if (DCB_IS_PARKED_IN_POOL(dcb))
+                atomic_add(&dcb->server->conn_pool.pool_stats.n_parked_conns, -1);
             DCB_CLR_IN_CONN_POOL(dcb);
         }
     }
@@ -3230,6 +3232,7 @@ void dcb_add_server_persistent_connection_fast(DCB *dcb)
     spinlock_release(&dcb->server->persistlock);
     atomic_add(&dcb->server->stats.n_persistent, 1);
     atomic_add(&dcb->server->stats.n_current, -1);
+    atomic_add(&dcb->server->conn_pool.pool_stats.n_parked_conns, 1);
 }
 
 /**
