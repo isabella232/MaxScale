@@ -558,6 +558,16 @@ SERVER_PARAM	*param;
             dcb_printf(dcb, "\tPersistent max time (secs):          %d\n",
 						server->persistmaxtime);
         }
+       /* Airproxy prints connection pool stats */
+       if (server->conn_pool.conn_pool_size > 0)
+       {
+           dcb_printf(dcb, "\tConnection pool connections:               %d\n",
+                      server->conn_pool.pool_stats.n_pool_conns);
+           dcb_printf(dcb, "\tConnection pool avaiable connections:      %d\n",
+                      server->conn_pool.pool_stats.n_parked_conns);
+           dcb_printf(dcb, "\tConnection pool queued client connections: %d\n",
+                      server->conn_pool.pool_stats.n_queue_items);
+       }
 }
 
 /**
