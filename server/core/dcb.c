@@ -342,6 +342,11 @@ dcb_final_free(DCB *dcb)
 	}
 	spinlock_release(&dcbspin);
 
+        /* Airproxy maintains service connection pool stats */
+        if (dcb->service != NULL) {
+            atomic_add(&dcb->service->conn_pool_stats.n_client_sessions, -1);
+        }
+
         if (dcb->session) {
                 /*<
                  * Terminate client session.

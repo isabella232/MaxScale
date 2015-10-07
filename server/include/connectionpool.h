@@ -20,6 +20,15 @@ struct conn_pool_func {
 };
 typedef struct conn_pool_func CONN_POOL_FUNC;
 
+/**
+ * Per service connection pool stats
+ */
+struct service_conn_pool_stats {
+    int n_conn_accepts;            /* number of connection requests */
+    int n_client_sessions;         /* number of client connections */
+};
+typedef struct service_conn_pool_stats SERVICE_CONN_POOL_STATS;
+
 void pool_init_queue_item(struct server_connection_pool_queue_item *queue_item,
 			  void *router_ses);
 
