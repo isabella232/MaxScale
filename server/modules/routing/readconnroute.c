@@ -1225,7 +1225,8 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
     if (DCB_IS_IN_CONN_POOL(backend_dcb) && !SERVER_CONN_POOL_QUEUE_EMPTY(server)) {
         POOL_QUEUE_ITEM *req = NULL;
 
-        /* unlink this backend connection from router session backend ref */
+        /* unlink this backend connection from router session and client session */
+        session_unlink_dcb(backend_dcb->session, backend_dcb);
         unlink_dcb_router_session(backend_dcb);
         req = server_dequeue_connection_pool_request(server);
         if (req != NULL) {

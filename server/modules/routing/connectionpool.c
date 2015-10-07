@@ -27,9 +27,9 @@ pool_init_queue_item(POOL_QUEUE_ITEM *queue_item, void *rses)
 
 /**
  * The helper function that returns the backend connection to its server
- * connection pool. Because a pooling connection returns to pool after it
- * have forwarded response to client session, it is called without having
- * client's router session lock acquired.
+ * connection pool and unlinks its current client session. Because a pooling
+ * connection returns to pool after it have forwarded response to client
+ * session, it is called without having client's router session lock acquired.
  */
 int
 pool_park_connection(DCB *backend_dcb)
