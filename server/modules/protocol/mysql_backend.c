@@ -21,6 +21,7 @@
 #include <skygw_utils.h>
 #include <log_manager.h>
 #include <modutil.h>
+
 #include <connectionpool.h>
 
 /*
@@ -855,6 +856,8 @@ static int gw_error_backend_event(DCB *dcb)
 	    LOGIF(LE, (skygw_log_write_flush(
 	        LOGFILE_ERROR,
 	        "Connection pooling DCB %p skips backend error event", dcb)));
+            atomic_add(&dcb->server->conn_pool.pool_stats.n_parked_conns_errors, 1);
+            atomic_add(&dcb->server->conn_pool.pool_stats.n_conns_backend_errors, 1);
 	    return 1;
 	}
 	session = dcb->session;
@@ -862,6 +865,11 @@ static int gw_error_backend_event(DCB *dcb)
         rsession = session->router_session;
         router = session->service->router;
         router_instance = session->service->router_instance;
+
+        /* Airproxy maintains server connection pool stats */
+        if (DCB_IS_PARKED_IN_POOL(dcb)) {
+            atomic_add(&dcb->server->conn_pool.pool_stats.n_conns_backend_errors, 1);
+        }
 
         /**
          * Avoid running redundant error handling procedure.
@@ -1099,6 +1107,11 @@ gw_backend_hangup(DCB *dcb)
         if (!dcb->session && dcb->persistentstart)
         {
             dcb->dcb_errhandle_called = true;
+            /* Airproxy maintains server connection pool stats */
+            if (DCB_IS_PARKED_IN_POOL(dcb)) {
+                atomic_add(&dcb->server->conn_pool.pool_stats.n_parked_conns_errors, 1);
+                atomic_add(&dcb->server->conn_pool.pool_stats.n_conns_backend_errors, 1);
+            }
             goto retblock;
         }
         session = dcb->session;
@@ -1122,7 +1135,12 @@ gw_backend_hangup(DCB *dcb)
         spinlock_acquire(&session->ses_lock);
         ses_state = session->state;
         spinlock_release(&session->ses_lock);
-        
+
+        /* Airproxy maintains server connection pool stats */
+        if (DCB_IS_PARKED_IN_POOL(dcb)) {
+            atomic_add(&dcb->server->conn_pool.pool_stats.n_conns_backend_errors, 1);
+        }
+
         /**
          * Session might be initialized when DCB already is in the poll set.
          * Thus hangup can occur in the middle of session initialization.

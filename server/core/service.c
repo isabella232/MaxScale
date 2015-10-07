@@ -1275,6 +1275,10 @@ int		i;
 		   service->conn_pool_stats.n_conn_accepts);
 	dcb_printf(dcb, "\t\tCurrent client connections:	%d\n",
 		   service->conn_pool_stats.n_client_sessions);
+	dcb_printf(dcb, "\t\tClient connection hangups:	%d\n",
+		   service->conn_pool_stats.n_client_hangups);
+	dcb_printf(dcb, "\t\tClient connection errors:	%d\n",
+		   service->conn_pool_stats.n_client_errors);
 }
 
 /**

@@ -81,6 +81,8 @@ typedef struct {
 	int        n_pool_conns;     /**< Number of connections in pool */
 	int        n_parked_conns;   /**< Number of connections currently parking in pool */
 	int        n_queue_items;    /**< Number of waiting client router sessions */
+	int        n_conns_backend_errors; /**< Number of connections backend errors */
+	int        n_parked_conns_errors;  /**< Number of parked connections backend errors */
 } CONN_POOL_STATS;
 
 typedef struct {
