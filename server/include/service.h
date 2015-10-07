@@ -30,6 +30,9 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/dh.h>
+
+#include "connectionpool.h" // for SERVICE_CONN_POOL_STATS
+
 /**
  * @file service.h
  *
@@ -190,6 +193,8 @@ typedef struct service {
         char* ssl_key; /*< SSL private key */
         char* ssl_ca_cert; /*< SSL CA certificate */
         bool ssl_init_done; /*< If SSL has already been initialized for this service */
+
+        SERVICE_CONN_POOL_STATS conn_pool_stats; /**< Airproxy connection pool stats */
 
 } SERVICE;
 

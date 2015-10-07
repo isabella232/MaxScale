@@ -100,6 +100,8 @@ static void service_add_qualified_param(
         SERVICE*          svc,
         CONFIG_PARAMETER* param);
 
+static void service_init_conn_pool_stats(SERVICE *service);
+
 /**
  * Allocate a new service for the gateway to support
  *
@@ -165,6 +167,9 @@ SERVICE 	*service;
 	service->next = allServices;
 	allServices = service;
 	spinlock_release(&service_spin);
+
+	/* Airproxy initialize connection pool stats */
+	service_init_conn_pool_stats(service);
 
 	return service;
 }
@@ -1263,6 +1268,13 @@ int		i;
 						service->stats.n_current);
 		dcb_printf(dcb,"\tSSL:	%s\n", service->ssl_mode == SSL_DISABLED ? "Disabled":
 	    (service->ssl_mode == SSL_ENABLED ? "Enabled":"Required"));
+
+	/* Airproxy connection pool stats */
+	dcb_printf(dcb, "\tConnection pool\n");
+	dcb_printf(dcb, "\t\tConnection requests:		%d\n",
+		   service->conn_pool_stats.n_conn_accepts);
+	dcb_printf(dcb, "\t\tCurrent client connections:	%d\n",
+		   service->conn_pool_stats.n_client_sessions);
 }
 
 /**
@@ -2054,4 +2066,14 @@ int serviceInitSSL(SERVICE* service)
 	service->ssl_init_done = true;
     }
     return 0;
+}
+
+/** Airproxy connection pool */
+
+static void
+service_init_conn_pool_stats(SERVICE *service)
+{
+    SERVICE_CONN_POOL_STATS *stats = &service->conn_pool_stats;
+    stats->n_conn_accepts = 0;
+    stats->n_client_sessions = 0;
 }
