@@ -1884,6 +1884,10 @@ gw_client_close(DCB *dcb)
 			spinlock_release(&session->ses_lock);
 			/** Close router session and all its connections */
 			router->closeSession(router_instance, session->router_session);
+			/* Airproxy maintains service connection pool disconnection counter */
+			if (dcb->service != NULL) {
+			    atomic_add(&dcb->service->conn_pool_stats.n_client_disconnections, 1);
+			}
 		}
 		else
 		{
