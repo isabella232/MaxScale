@@ -1828,6 +1828,12 @@ static int gw_error_client_event(
                 LOGFILE_DEBUG,
                 "Client error event handling.")));
 #endif
+
+        /* Airproxy maintains service connection pool stats */
+        if (dcb->service != NULL) {
+            dcb->service->conn_pool_stats.n_client_errors++;
+        }
+
         dcb_close(dcb);
         
 retblock:
@@ -1917,6 +1923,12 @@ gw_client_hangup_event(DCB *dcb)
                 LOGFILE_DEBUG,
                 "Client hangup error handling.")));
 #endif
+
+        /* Airproxy maintains service connection pool stats */
+        if (dcb->service != NULL) {
+            dcb->service->conn_pool_stats.n_client_hangups++;
+        }
+
         dcb_close(dcb);
  
 retblock:
