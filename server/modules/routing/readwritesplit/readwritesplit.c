@@ -5700,7 +5700,7 @@ unlink_dcb_backend_ref(DCB *backend_dcb)
  * It assumes that the caller have locked router session for connection DCB
  * runtime data change.
  *
- * @return  0 a connection is found and linked with the router session 
+ * @return  0 a connection is found and linked with the router session
  * @return  1 no connection and router session is marked for enqueuing.
  * @return -1 faulty situation
  *
@@ -5858,7 +5858,8 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
     if (DCB_IS_IN_CONN_POOL(backend_dcb) && !SERVER_CONN_POOL_QUEUE_EMPTY(server)) {
         POOL_QUEUE_ITEM *req = NULL;
 
-        /* unlink this backend connection from router session backend ref */
+        /* unlink this backend connection from router session and client session */
+        session_unlink_dcb(backend_dcb->session, backend_dcb);
         unlink_dcb_backend_ref(backend_dcb);
         req = server_dequeue_connection_pool_request(server);
         if (req != NULL) {
