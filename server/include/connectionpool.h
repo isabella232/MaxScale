@@ -9,6 +9,7 @@ struct dcb;
 struct session;
 struct server;
 struct server_connection_pool_queue_item;
+struct gwbuf;
 
 /**
  * Connection pooling callback functions
@@ -20,8 +21,28 @@ struct conn_pool_func {
 };
 typedef struct conn_pool_func CONN_POOL_FUNC;
 
+#define RESP_NONE  0
+#define RESP_EOF   1  /* EOF or OK packet */
+#define RESP_ERR   2  /* ERR packet */
+
 /**
- * Per service connection pool stats
+ * Query response packets sniffing state. A pooling backend connection must
+ * sniff query response packets and ensure receiving complete result set.
+ * According to ProtocolText::Resultset, "resp_eof_count" should be 2 for
+ * a complete query resultset, i.e. it has both column definitions part and
+ * rows data part.
+ */
+typedef struct {
+  int resp_eof_count;           /* number of EOF/ERR packets */
+  int resp_ncols;               /* number of column packets */
+  int resp_nrows;               /* number of row data packets */
+  int resp_status;              /* response success 1, error 2 */
+  int resp_more_result;         /* has multi resultset */
+} CONN_POOL_QUERY_RESPONSE;
+
+
+/**
+ * Service level connection pool stats
  */
 struct service_conn_pool_stats {
     int n_conn_accepts;            /* number of connection requests */
@@ -31,6 +52,7 @@ struct service_conn_pool_stats {
     int n_client_errors;           /* number of client error events */
 };
 typedef struct service_conn_pool_stats SERVICE_CONN_POOL_STATS;
+
 
 void pool_init_queue_item(struct server_connection_pool_queue_item *queue_item,
 			  void *router_ses);
@@ -48,5 +70,31 @@ int pool_unpark_connection(struct dcb **p_dcb, struct session *client_session,
  * bootstraped.
  */
 int server_backend_auth_connection_close_cb(struct dcb *backend_dcb);
+
+/**
+ * This function inspects complete mysql packets in the query response data buffer
+ * and checks whether the result set is complete for COM_QUERY_RESPONSE. The backend
+ * DCB connection pool response state will track mysql packets received and resultset
+ * status in the end.
+ */
+void protocol_process_query_resultset(struct dcb *backend_dcb, struct gwbuf *response,
+                                      int first);
+
+/**
+ * Reset backend DCB connection pool query response state before routing query.
+ */
+#define protocol_reset_query_response_state(backend_dcb) \
+  { CONN_POOL_QUERY_RESPONSE *resp = &backend_dcb->dcb_conn_pool_data.resp_state; \
+    resp->resp_eof_count = resp->resp_ncols = 0; resp->resp_nrows = 0;            \
+    resp->resp_more_result = 0;                                                   \
+    resp->resp_status = RESP_NONE;                                                \
+  }
+
+/**
+ * Check whether a backend connection has received complete resultset packets.
+ */
+#define CONN_POOL_DCB_RESULTSET_OK(dcb) \
+  (dcb->dcb_conn_pool_data.resp_state.resp_status == RESP_EOF || \
+   dcb->dcb_conn_pool_data.resp_state.resp_status == RESP_ERR)
 
 #endif /* _CONNECTIONPOOL_H */

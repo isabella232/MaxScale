@@ -27,6 +27,8 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+#include "connectionpool.h"
+
 #define ERRHANDLE
 
 struct session;
@@ -215,7 +217,6 @@ typedef struct dcb_callback {
 			*next;		/*< Next callback for this DCB */
 } DCB_CALLBACK;
 
-
 /**
  * Airbnb connection proxy runtime DCB pooling status data. A non-NULL
  * back pointer to some router session means that the backend connection
@@ -225,6 +226,7 @@ typedef struct {
 	void   *rses_ref;        /**< back pointer to router session */
 	int     rses_bref_index; /**< router session backend_ref index */
 	int     state;           /**< connection pool state */
+	CONN_POOL_QUERY_RESPONSE resp_state; /**< query response state */
 } CONN_POOL_DATA;
 
 /**

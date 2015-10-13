@@ -598,7 +598,8 @@ static int gw_read_backend_event(DCB *dcb) {
                                                 dcb);
                                         /* Airproxy check whether server connection pool is enabled */
                                         if (backend_protocol->protocol_auth_state == MYSQL_IDLE &&
-					    SERVER_USE_CONN_POOL(dcb->server))
+					    SERVER_USE_CONN_POOL(dcb->server) &&
+					    CONN_POOL_DCB_RESULTSET_OK(dcb))
 					{
                                             park_connection = true;
                                         }
