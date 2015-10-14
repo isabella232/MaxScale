@@ -26,6 +26,7 @@ typedef struct conn_pool_func CONN_POOL_FUNC;
 struct service_conn_pool_stats {
     int n_conn_accepts;            /* number of connection requests */
     int n_client_sessions;         /* number of client connections */
+    int n_client_disconnections;   /* number of client connection close events */
     int n_client_hangups;          /* number of client hangup events */
     int n_client_errors;           /* number of client error events */
 };
