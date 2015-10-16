@@ -3088,6 +3088,11 @@ static void clientReply (
                 bref_clear_state(bref, BREF_QUERY_ACTIVE);
                 /** Set response status as replied */
                 bref_clear_state(bref, BREF_WAITING_RESULT);
+                protocol_process_query_resultset(backend_dcb, writebuf, 1);
+        }
+        /* Airproxy continue scanning mysql packets for partial query resultset */
+        else {
+                protocol_process_query_resultset(backend_dcb, writebuf, 0);
         }
 
         if (writebuf != NULL && client_dcb != NULL)
@@ -5782,7 +5787,7 @@ forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb
 
     if (!rses_begin_locked_router_action(rses))
         return false;
- 
+
     /* link backend dcb with the client router session queued in server pool */
     bref = rses->rses_bref_queued;
     link_dcb_backend_ref(backend_dcb, rses, bref);
@@ -5861,6 +5866,8 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
         /* unlink this backend connection from router session and client session */
         session_unlink_dcb(backend_dcb->session, backend_dcb);
         unlink_dcb_backend_ref(backend_dcb);
+        /* reset query response state before query routing */
+        protocol_reset_query_response_state(backend_dcb);
         req = server_dequeue_connection_pool_request(server);
         if (req != NULL) {
             /* FIXME(liang) must send error to client if query routing failed */

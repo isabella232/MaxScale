@@ -3215,6 +3215,7 @@ static void dcb_init_conn_pool_data(DCB *dcb)
     cp->rses_ref = NULL;
     cp->rses_bref_index = -1;
     cp->state = 0;
+    protocol_reset_query_response_state(dcb);
 }
 
 /**
