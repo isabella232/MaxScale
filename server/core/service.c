@@ -1275,7 +1275,7 @@ int		i;
 		   service->conn_pool_stats.n_conn_accepts);
 	dcb_printf(dcb, "\t\tCurrent client connections:	%d\n",
 		   service->conn_pool_stats.n_client_sessions);
-	dcb_printf(dcb, "\t\tClient disconnections:	%d\n",
+	dcb_printf(dcb, "\t\tClient disconnections:		%d\n",
 		   service->conn_pool_stats.n_client_disconnections);
 	dcb_printf(dcb, "\t\tClient connection hangups:	%d\n",
 		   service->conn_pool_stats.n_client_hangups);

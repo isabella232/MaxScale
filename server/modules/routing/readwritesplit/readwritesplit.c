@@ -943,6 +943,7 @@ static void* newSession(
         client_rses->rses_backend_ref  = backend_ref;
         client_rses->rses_nbackends    = router_nservers; /*< # of backend servers */
         client_rses->rses_bref_queued  = NULL; /* Airproxy pool queued */
+        client_rses->rses_query_state  = QUERY_IDLE;
 	/* initialize embedded POOL_QUEUE_ITEM to point to this router session */
 	pool_init_queue_item(&client_rses->rses_queue_item, client_rses);
 
@@ -2760,6 +2761,12 @@ static bool route_single_stmt(
 			bref = get_bref_from_dcb(rses, target_dcb);
 			bref_set_state(bref, BREF_QUERY_ACTIVE);
 			bref_set_state(bref, BREF_WAITING_RESULT);
+			/* Airproxy tracks client router session query state */
+			if (SERVER_USE_CONN_POOL(target_dcb->server) &&
+			    DCB_IS_IN_CONN_POOL(target_dcb))
+			{
+			    rses->rses_query_state = QUERY_ROUTED;
+			}
 		}
 		else
 		{
@@ -2871,12 +2878,19 @@ int		  i = 0;
 BACKEND		  *backend;
 char		  *weightby;
 double master_pct = 0.0;
+int n_query_receiving = 0;
+int n_query_executing = 0;
 
 	spinlock_acquire(&router->lock);
 	router_cli_ses = router->connections;
 	while (router_cli_ses)
 	{
 		i++;
+		/* Airproxy maintain router client session query execution stat */
+		if (router_cli_ses->rses_query_state == QUERY_ROUTED)
+		    n_query_executing++;
+		else if (router_cli_ses->rses_query_state == QUERY_RECEIVING_RESULT)
+		    n_query_receiving++;
 		router_cli_ses = router_cli_ses->next;
 	}
 	spinlock_release(&router->lock);
@@ -2931,6 +2945,13 @@ double master_pct = 0.0;
                 }
 
         }
+
+	dcb_printf(dcb,
+                   "\tCurrent executing client queries:        %d\n",
+                   n_query_executing);
+	dcb_printf(dcb,
+                   "\tCurrent client queries receiving result: %d\n",
+                   n_query_receiving);
 }
 
 /**
@@ -3088,6 +3109,9 @@ static void clientReply (
                 bref_clear_state(bref, BREF_QUERY_ACTIVE);
                 /** Set response status as replied */
                 bref_clear_state(bref, BREF_WAITING_RESULT);
+                /* Airproxy track router client session query state */
+                router_cli_ses->rses_query_state = QUERY_RECEIVING_RESULT;
+                /* Airproxy process resultset packets */
                 protocol_process_query_resultset(backend_dcb, writebuf, 1);
         }
         /* Airproxy continue scanning mysql packets for partial query resultset */
@@ -3099,6 +3123,10 @@ static void clientReply (
         {
                 /** Write reply to client DCB */
 		SESSION_ROUTE_REPLY(backend_dcb->session, writebuf);
+        }
+        /* Airproxy track router client session query state */
+        if (CONN_POOL_DCB_RESULTSET_OK(backend_dcb)) {
+                router_cli_ses->rses_query_state = QUERY_IDLE;
         }
         /** Unlock router session */
         rses_end_locked_router_action(router_cli_ses);
@@ -5801,12 +5829,15 @@ forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb
     }
 
     /* forward query to backend server */
+    ss_dassert(rses->rses_query_state < QUERY_ROUTED);
     rc = backend_dcb->func.write(backend_dcb, querybuf);
     if (rc == 1) {
         atomic_add(&rses->router->stats.n_queries, 1);
         /* add query response waiter to backend reference */
         bref_set_state(bref, BREF_QUERY_ACTIVE);
         bref_set_state(bref, BREF_WAITING_RESULT);
+        /* track router client session query state */
+        rses->rses_query_state = QUERY_ROUTED;
         rc = true;
     } else {
         LOGIF((LE|LT), (skygw_log_write_flush(
@@ -5858,6 +5889,7 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
 
     ss_dassert(server == backend_dcb->server && SERVER_USE_CONN_POOL(server));
     ss_dassert(BREF_IS_IN_USE(&backend_refs[bref_index]));
+    ss_dassert(rses->rses_query_state == QUERY_IDLE);
 
     /* check out existing connection pool request and serve directly, if any */
     if (DCB_IS_IN_CONN_POOL(backend_dcb) && !SERVER_CONN_POOL_QUEUE_EMPTY(server)) {

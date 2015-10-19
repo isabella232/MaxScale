@@ -301,6 +301,7 @@ struct router_client_session {
         HASHTABLE*       rses_prep_stmt[2];
 #endif
 	struct router_instance	 *router;	/*< The router instance */
+	enum conn_pool_session_query_state rses_query_state; /*< session query execution state */
 	backend_ref_t   *rses_bref_queued; /*< backend reference to be queued for connection */
 	POOL_QUEUE_ITEM  rses_queue_item;  /*< embedded server connection pool queue item */
         struct router_client_session* next;

@@ -54,9 +54,20 @@ struct service_conn_pool_stats {
 typedef struct service_conn_pool_stats SERVICE_CONN_POOL_STATS;
 
 
+/** Client router session query state enumeration */
+enum conn_pool_session_query_state {
+    QUERY_IDLE = 0,
+    QUERY_ROUTED,
+    QUERY_RECEIVING_RESULT,
+    QUERY_STATE_MAX
+};
+
+
+/** Initialize server connection pool queue item */
 void pool_init_queue_item(struct server_connection_pool_queue_item *queue_item,
 			  void *router_ses);
 
+/** Server connection pool helper functions */
 int pool_park_connection(struct dcb *backend_dcb);
 int pool_unpark_connection(struct dcb **p_dcb, struct session *client_session,
 			   struct server *server, char *user, void *cb_arg);
