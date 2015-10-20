@@ -325,11 +325,19 @@ static void enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *query
 static int server_backend_connection_pool_cb(DCB *backend_dcb);
 static int server_backend_connection_pool_link_cb(DCB *backend_dcb, int link_mode,
 						  int rses_locked, void *arg);
+static void router_conn_pool_stats_cb(void *router_instance, void *stats_arg);
 
 static CONN_POOL_FUNC conn_pool_cb = {
   server_backend_connection_pool_cb,
   server_backend_auth_connection_close_cb,
   server_backend_connection_pool_link_cb
+};
+
+static ROUTER_CONN_POOL_FUNC router_conn_pool_cb = {
+  conn_proxy_stats_init_cb,
+  conn_proxy_stats_close_cb,
+  conn_proxy_stats_register_cb,
+  router_conn_pool_stats_cb
 };
 
 /* Airproxy checks backend server connection pool for available backend_dcb,
@@ -648,6 +656,11 @@ createInstance(SERVICE *service, char **options)
 	 * Until we know otherwise assume we have some available slaves.
 	 */
 	router->available_slaves = true;
+
+	/* Airproxy lazily sets router connection pooling callback pointer */
+	if (service->conn_pool_func == NULL) {
+            service->conn_pool_func = &router_conn_pool_cb;
+	}
 
 	/*
 	 * If server weighting has been defined calculate the percentage
@@ -5960,6 +5973,15 @@ init_connection_pool_dcb(DCB *backend_dcb, ROUTER_CLIENT_SES *rses,
     DCB_SET_ROUTER_SESSION(backend_dcb, rses, backend_ref_idx);
 }
 
+static void
+router_conn_pool_stats_cb(void *router_instance, void *stats_arg)
+{
+    ROUTER_INSTANCE *router = (ROUTER_INSTANCE *)router_instance;
+    service_conn_pool_minutely_stats *stats = (service_conn_pool_minutely_stats *)stats_arg;
+    stats->n_queries_routed = router->stats.n_queries;
+    stats->n_queries_master = router->stats.n_master;
+    stats->n_queries_slave = router->stats.n_slave;
+}
 
 
 

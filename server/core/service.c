@@ -65,6 +65,8 @@
 #include <gw.h>
 #include <gwdirs.h>
 
+#include "connectionpool.h"
+
 /** Defined in log_manager.cc */
 extern int            lm_enabled_logfiles_bitmask;
 extern size_t         log_ses_count[];
@@ -99,8 +101,6 @@ static int find_type(typelib_t* tl, const char* needle, int maxlen);
 static void service_add_qualified_param(
         SERVICE*          svc,
         CONFIG_PARAMETER* param);
-
-static void service_init_conn_pool_stats(SERVICE *service);
 
 /**
  * Allocate a new service for the gateway to support
@@ -169,6 +169,7 @@ SERVICE 	*service;
 	spinlock_release(&service_spin);
 
 	/* Airproxy initialize connection pool stats */
+	service->conn_pool_func = NULL;
 	service_init_conn_pool_stats(service);
 
 	return service;
@@ -474,6 +475,13 @@ if(service->ssl_mode != SSL_DISABLED)
 	    hktask_add("connection_timeout",session_close_timeouts,NULL,5);
 	}
 
+	/* Airproxy allocate internal proxy stats structure and register minutely
+         * housekeeper task to collect minutely stats */
+	if (service->conn_pool_func != NULL) {
+	    service->conn_pool_func->router_proxy_stats_init(service);
+	    service->conn_pool_func->router_proxy_stats_register(service);
+	}
+
 	return listeners;
 }
 
@@ -560,6 +568,11 @@ int		listeners = 0;
 	}
 	service->state = SERVICE_STATE_STOPPED;
 
+	/* Airproxy free internal proxy stats structure */
+	if (service->conn_pool_func != NULL) {
+	    service->conn_pool_func->router_proxy_stats_close(service);
+	}
+
 	return listeners;
 }
 
@@ -592,6 +605,12 @@ int		listeners = 0;
 	    port = port->next;
 	}
 	service->state = SERVICE_STATE_STARTED;
+
+	/* Airproxy allocate internal proxy stats structure */
+	if (service->conn_pool_func != NULL) {
+	    service->conn_pool_func->router_proxy_stats_init(service);
+	}
+
 	return listeners;
 }
 
@@ -2076,10 +2095,35 @@ int serviceInitSSL(SERVICE* service)
 
 /** Airproxy connection pool */
 
-static void
-service_init_conn_pool_stats(SERVICE *service)
+void service_conn_pool_stats_minutely(service_conn_pool_minutely_stats *stats)
 {
-    SERVICE_CONN_POOL_STATS *stats = &service->conn_pool_stats;
-    stats->n_conn_accepts = 0;
-    stats->n_client_sessions = 0;
+    SERVICE *service = NULL, *svc;
+
+    /* FIXME(liang): allow a single router service in Airproxy */
+    spinlock_acquire(&service_spin);
+    for (svc = allServices; svc != NULL; svc = svc->next) {
+        if (!strcmp(svc->routerModule, "readwritesplit") ||
+            !strcmp(svc->routerModule, "readconnroute"))
+        {
+            service = svc;
+            break;
+        }
+    }
+    spinlock_release(&service_spin);
+
+    if (service == NULL || !config_connection_pool_enabled())
+        return;
+
+    /* collect both service router instance stats */
+    if (service->conn_pool_func != NULL) {
+        service->conn_pool_func->router_proxy_stats(service->router_instance, stats);
+    }
+
+    /* collect service level stats */
+    stats->n_conn_reqs = service->conn_pool_stats.n_conn_accepts;
+    stats->n_disconn_reqs = service->conn_pool_stats.n_client_disconnections;
+    stats->n_client_hangups = service->conn_pool_stats.n_client_hangups;
+    stats->n_client_errors = service->conn_pool_stats.n_client_errors;
+    stats->n_client_sessions = service->conn_pool_stats.n_client_sessions;
 }
+
