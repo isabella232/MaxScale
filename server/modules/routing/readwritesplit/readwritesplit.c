@@ -337,7 +337,8 @@ static ROUTER_CONN_POOL_FUNC router_conn_pool_cb = {
   conn_proxy_stats_init_cb,
   conn_proxy_stats_close_cb,
   conn_proxy_stats_register_cb,
-  router_conn_pool_stats_cb
+  router_conn_pool_stats_cb,
+  conn_proxy_export_stats_cb
 };
 
 /* Airproxy checks backend server connection pool for available backend_dcb,

@@ -2127,3 +2127,23 @@ void service_conn_pool_stats_minutely(service_conn_pool_minutely_stats *stats)
     stats->n_client_sessions = service->conn_pool_stats.n_client_sessions;
 }
 
+void service_export_conn_proxy_stats(DCB *dcb)
+{
+    SERVICE *service = NULL, *svc;
+
+    /* FIXME(liang): allow a single router service in Airproxy */
+    spinlock_acquire(&service_spin);
+    for (svc = allServices; svc != NULL; svc = svc->next) {
+        if (!strcmp(svc->routerModule, "readwritesplit") ||
+            !strcmp(svc->routerModule, "readconnroute"))
+        {
+            service = svc;
+            break;
+        }
+    }
+    spinlock_release(&service_spin);
+
+    if (service != NULL && config_connection_pool_enabled()) {
+        service->conn_pool_func->router_proxy_export_stats(dcb);
+    }
+}
