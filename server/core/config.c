@@ -2012,6 +2012,29 @@ SERVER			*server;
                                         "defined.",
                                         obj->object)));
                         }
+			/* Airproxy adjust server connection pool configuration */
+			if (obj->element)
+			{
+			        int pool_size = 0;
+			        SERVER *server = obj->element;
+			        /* server connection pool size should not be changed to zero */
+			        pool_size = strtol(config_get_value_string(obj->parameters, "connection_pool_size"), NULL, 0);
+			        if (server->conn_pool.conn_pool_size > 0 && pool_size == 0) {
+			            LOGIF(LE, (skygw_log_write_flush(
+			                LOGFILE_ERROR,
+			                "Error : Server '%s' connection pool size cannot be "
+			                "changed to zero. ",
+			                obj->object)));
+			        }
+			        server->conn_pool.conn_pool_size = pool_size;
+			        if (server->conn_pool.conn_pool_size > 0) {
+			            server->persistpoolmax = MAX(server->conn_pool.conn_pool_size, server->persistpoolmax);
+			            /* ensure pooling connections have large timeout */
+			            server->persistmaxtime = MAX(86400, server->persistmaxtime);
+			            /* mark proxy server have server connection pooling enabled */
+			            gateway.server_connection_pools = 1;
+			        }
+			}
 		}
 		obj = obj->next;
 	}
