@@ -194,6 +194,7 @@ typedef struct service {
         char* ssl_ca_cert; /*< SSL CA certificate */
         bool ssl_init_done; /*< If SSL has already been initialized for this service */
 
+        ROUTER_CONN_POOL_FUNC *conn_pool_func; /**< Airproxy connection pooling callbacks */
         SERVICE_CONN_POOL_STATS conn_pool_stats; /**< Airproxy connection pool stats */
 
 } SERVICE;
@@ -257,4 +258,6 @@ void  service_shutdown();
 extern	int	serviceSessionCountAll();
 extern  RESULTSET	*serviceGetList();
 extern  RESULTSET	*serviceGetListenerList();
+
+void service_conn_pool_stats_minutely(service_conn_pool_minutely_stats *stats);
 #endif

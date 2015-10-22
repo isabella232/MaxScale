@@ -19,6 +19,33 @@ extern int            lm_enabled_logfiles_bitmask;
 extern size_t         log_ses_count[];
 extern __thread log_info_t tls_log_info;
 
+/* Airbnb connection proxy minutely stats structure */
+service_conn_pool_minutely_stats *conn_proxy_minutely = NULL;
+
+int conn_proxy_stats_init_cb(SERVICE *service)
+{
+    if (conn_proxy_minutely != NULL)
+        return 0;
+
+    conn_proxy_minutely = (service_conn_pool_minutely_stats *)
+        calloc(1, sizeof(service_conn_pool_minutely_stats));
+    if (conn_proxy_minutely == NULL) {
+        LOGIF(LE, (skygw_log_write_flush(
+                     LOGFILE_ERROR,
+                     "Error : Service %s failed to allocate minutely stats structure.",
+                     service)));
+        return 1;
+    }
+    return 0;
+}
+
+void conn_proxy_stats_close_cb(SERVICE *service)
+{
+    if (conn_proxy_minutely != NULL)
+        free(conn_proxy_minutely);
+    conn_proxy_minutely = NULL;
+}
+
 void
 pool_init_queue_item(POOL_QUEUE_ITEM *queue_item, void *rses)
 {
@@ -176,4 +203,19 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
         }
         ss_dassert(buf_ptr == buf_end);
     }
+}
+
+/**
+ * This housekeeper tasks collects minutely stats for the single router service and all
+ * its backend servers.
+ */
+void
+hktask_proxy_stats_minutely()
+{
+    service_conn_pool_stats_minutely(conn_proxy_minutely);
+}
+
+void conn_proxy_stats_register_cb(SERVICE *service)
+{
+    hktask_add("connection_proxy_stats", hktask_proxy_stats_minutely, NULL, 60);
 }
