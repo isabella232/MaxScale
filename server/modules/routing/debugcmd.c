@@ -75,6 +75,8 @@
 #include <skygw_utils.h>
 #include <log_manager.h>
 
+#include "connectionpool.h"
+
 #define	MAXARGS	5
 
 #define	ARG_TYPE_ADDRESS	1
@@ -198,6 +200,10 @@ struct subcommand showoptions[] = {
 	{ "users",	0, telnetdShowUsers,
 			"Show statistics and user names for the debug interface",
 			"Show statistics and user names for the debug interface",
+				{0, 0, 0} },
+	{ "stats",	0, service_export_conn_proxy_stats,
+			"Export Airbnb connection proxy internal stats",
+			"Export Airbnb connection proxy internal stats",
 				{0, 0, 0} },
 	{ NULL,		0, NULL,		NULL,	NULL,
 				{0, 0, 0} }

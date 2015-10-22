@@ -30,6 +30,7 @@ struct router_conn_pool_func {
     void (*router_proxy_stats_close)(struct service *);
     void (*router_proxy_stats_register)(struct service *);
     void (*router_proxy_stats)(void *router_instance, void *stats);
+    void (*router_proxy_export_stats)(struct dcb *);
 };
 typedef struct router_conn_pool_func ROUTER_CONN_POOL_FUNC;
 
@@ -109,11 +110,10 @@ void conn_proxy_stats_close_cb(struct service *svc);
 void conn_proxy_stats_register_cb(struct service *svc);
 
 /**
- * The housekeeper task collects minutely connection proxy internal stats for
- * router service and backend servers. It separates stats collection from stats
- * serving to external stats agent.
+ * The debugcmd callback function to export connection proxy internal stats to
+ * external stats agent in JSON format.
  */
-void hktask_proxy_stats_minutely();
+void conn_proxy_export_stats_cb(struct dcb *dcb);
 
 /**
  * The callback is to terminate a server connection that had been used to complete

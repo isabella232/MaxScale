@@ -259,5 +259,7 @@ extern	int	serviceSessionCountAll();
 extern  RESULTSET	*serviceGetList();
 extern  RESULTSET	*serviceGetListenerList();
 
+/* Airproxy connection proxy */
 void service_conn_pool_stats_minutely(service_conn_pool_minutely_stats *stats);
+void service_export_conn_proxy_stats();
 #endif

@@ -205,11 +205,13 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
     }
 }
 
+
 /**
- * This housekeeper tasks collects minutely stats for the single router service and all
- * its backend servers.
+ * The housekeeper task collects minutely connection proxy internal stats for
+ * router service and backend servers. It separates stats collection from stats
+ * serving to external stats agent.
  */
-void
+static void
 hktask_proxy_stats_minutely()
 {
     service_conn_pool_stats_minutely(conn_proxy_minutely);
@@ -218,4 +220,20 @@ hktask_proxy_stats_minutely()
 void conn_proxy_stats_register_cb(SERVICE *service)
 {
     hktask_add("connection_proxy_stats", hktask_proxy_stats_minutely, NULL, 60);
+}
+
+void
+conn_proxy_export_stats_cb(struct dcb *dcb)
+{
+    service_conn_pool_minutely_stats *stats = conn_proxy_minutely;
+    dcb_printf(dcb, "{\n");
+    dcb_printf(dcb, "  \"queries_routed\": %d,\n", stats->n_queries_routed);
+    dcb_printf(dcb, "  \"queries_to_master\": %d,\n", stats->n_queries_master);
+    dcb_printf(dcb, "  \"queries_to_slaves\": %d,\n", stats->n_queries_slave);
+    dcb_printf(dcb, "  \"connection_reqs\": %d,\n", stats->n_conn_reqs);
+    dcb_printf(dcb, "  \"disconnection_reqs\": %d,\n", stats->n_disconn_reqs);
+    dcb_printf(dcb, "  \"client_hangups\": %d,\n", stats->n_client_hangups);
+    dcb_printf(dcb, "  \"client_errors\": %d,\n", stats->n_client_errors);
+    dcb_printf(dcb, "  \"client_sessions\": %d \n", stats->n_client_sessions);
+    dcb_printf(dcb, "}\n");
 }
