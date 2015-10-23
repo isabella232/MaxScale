@@ -19,7 +19,16 @@ extern int            lm_enabled_logfiles_bitmask;
 extern size_t         log_ses_count[];
 extern __thread log_info_t tls_log_info;
 
-/* Airbnb connection proxy minutely stats structure */
+/**
+ * Airbnb connection proxy minutely stats structure. It uses 2 structures, one
+ * for current minutely stats, and the other for last minutely. The minutely
+ * rate metrics, e.g. queries per minute, are calculated by the difference of
+ * the two minutely metric counters. Gauge metrics are always read from the
+ * current minutely states structure.
+ */
+#define MINUTELY_LAST 0
+#define MINUTELY_CURR 1
+#define MINUTELY_SIZE 2
 service_conn_pool_minutely_stats *conn_proxy_minutely = NULL;
 
 int conn_proxy_stats_init_cb(SERVICE *service)
@@ -28,7 +37,7 @@ int conn_proxy_stats_init_cb(SERVICE *service)
         return 0;
 
     conn_proxy_minutely = (service_conn_pool_minutely_stats *)
-        calloc(1, sizeof(service_conn_pool_minutely_stats));
+        calloc(1, MINUTELY_SIZE * sizeof(service_conn_pool_minutely_stats));
     if (conn_proxy_minutely == NULL) {
         LOGIF(LE, (skygw_log_write_flush(
                      LOGFILE_ERROR,
@@ -214,7 +223,12 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
 static void
 hktask_proxy_stats_minutely()
 {
-    service_conn_pool_stats_minutely(conn_proxy_minutely);
+    service_conn_pool_minutely_stats *last = &conn_proxy_minutely[MINUTELY_LAST];
+    service_conn_pool_minutely_stats *curr = &conn_proxy_minutely[MINUTELY_CURR];
+
+    /* copy current minutely to last minutely before overwrite current stats */
+    memcpy(last, curr, sizeof(service_conn_pool_minutely_stats));
+    service_conn_pool_stats_minutely(curr);
 }
 
 void conn_proxy_stats_register_cb(SERVICE *service)
@@ -225,15 +239,24 @@ void conn_proxy_stats_register_cb(SERVICE *service)
 void
 conn_proxy_export_stats_cb(struct dcb *dcb)
 {
-    service_conn_pool_minutely_stats *stats = conn_proxy_minutely;
+    service_conn_pool_minutely_stats *last = &conn_proxy_minutely[MINUTELY_LAST];
+    service_conn_pool_minutely_stats *curr = &conn_proxy_minutely[MINUTELY_CURR];
+
     dcb_printf(dcb, "{\n");
-    dcb_printf(dcb, "  \"queries_routed\": %d,\n", stats->n_queries_routed);
-    dcb_printf(dcb, "  \"queries_to_master\": %d,\n", stats->n_queries_master);
-    dcb_printf(dcb, "  \"queries_to_slaves\": %d,\n", stats->n_queries_slave);
-    dcb_printf(dcb, "  \"connection_reqs\": %d,\n", stats->n_conn_reqs);
-    dcb_printf(dcb, "  \"disconnection_reqs\": %d,\n", stats->n_disconn_reqs);
-    dcb_printf(dcb, "  \"client_hangups\": %d,\n", stats->n_client_hangups);
-    dcb_printf(dcb, "  \"client_errors\": %d,\n", stats->n_client_errors);
-    dcb_printf(dcb, "  \"client_sessions\": %d \n", stats->n_client_sessions);
+    dcb_printf(dcb, "  \"queries_routed\": %d,\n",
+               curr->n_queries_routed - last->n_queries_routed);
+    dcb_printf(dcb, "  \"queries_to_master\": %d,\n",
+               curr->n_queries_master - last->n_queries_master);
+    dcb_printf(dcb, "  \"queries_to_slaves\": %d,\n",
+               curr->n_queries_slave - last->n_queries_slave);
+    dcb_printf(dcb, "  \"connection_reqs\": %d,\n",
+               curr->n_conn_reqs - last->n_conn_reqs);
+    dcb_printf(dcb, "  \"disconnection_reqs\": %d,\n",
+               curr->n_disconn_reqs - last->n_disconn_reqs);
+    dcb_printf(dcb, "  \"client_hangups\": %d,\n",
+               curr->n_client_hangups - last->n_client_hangups);
+    dcb_printf(dcb, "  \"client_errors\": %d,\n",
+               curr->n_client_errors - last->n_client_errors);
+    dcb_printf(dcb, "  \"client_sessions\": %d \n", curr->n_client_sessions);
     dcb_printf(dcb, "}\n");
 }
