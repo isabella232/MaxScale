@@ -55,6 +55,19 @@ typedef struct {
 
 
 /**
+ * Server level connection pooling stats
+ */
+struct server_conn_pool_stats {
+    int n_pool_conns;              /* number of connections in pool */
+    int n_parked_conns;            /* number of connections currently parking in pool */
+    int n_queue_items;             /* number of waiting client router sessions */
+    int n_conns_backend_errors;    /* number of connections backend errors */
+    int n_parked_conns_errors;     /* number of parked connections backend errors */
+};
+typedef struct server_conn_pool_stats SERVER_CONN_POOL_STATS;
+
+
+/**
  * Service level connection pool counter stats
  */
 struct service_conn_pool_stats {
@@ -153,6 +166,16 @@ void protocol_process_query_resultset(struct dcb *backend_dcb, struct gwbuf *res
   (dcb->dcb_conn_pool_data.resp_state.resp_status == RESP_EOF || \
    dcb->dcb_conn_pool_data.resp_state.resp_status == RESP_ERR)
 
+
+/** Initialize server level connection pool stats */
+#define server_init_conn_pool_stats(server) \
+  {                                                          \
+    server->conn_pool.pool_stats.n_pool_conns = 0;           \
+    server->conn_pool.pool_stats.n_parked_conns = 0;         \
+    server->conn_pool.pool_stats.n_queue_items = 0;          \
+    server->conn_pool.pool_stats.n_conns_backend_errors = 0; \
+    server->conn_pool.pool_stats.n_parked_conns_errors = 0;  \
+  }
 
 /** Initialize service level connection pool stats */
 #define service_init_conn_pool_stats(service) \

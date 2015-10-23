@@ -243,6 +243,11 @@ conn_proxy_export_stats_cb(struct dcb *dcb)
     service_conn_pool_minutely_stats *curr = &conn_proxy_minutely[MINUTELY_CURR];
 
     dcb_printf(dcb, "{\n");
+
+    /* export servers stats */
+    server_export_conn_pool_stats(dcb);
+
+    dcb_printf(dcb, "\"proxy\": {\n");
     dcb_printf(dcb, "  \"queries_routed\": %d,\n",
                curr->n_queries_routed - last->n_queries_routed);
     dcb_printf(dcb, "  \"queries_to_master\": %d,\n",
@@ -258,5 +263,7 @@ conn_proxy_export_stats_cb(struct dcb *dcb)
     dcb_printf(dcb, "  \"client_errors\": %d,\n",
                curr->n_client_errors - last->n_client_errors);
     dcb_printf(dcb, "  \"client_sessions\": %d \n", curr->n_client_sessions);
+    dcb_printf(dcb, "}\n");
+
     dcb_printf(dcb, "}\n");
 }

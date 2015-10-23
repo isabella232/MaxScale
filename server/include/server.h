@@ -20,6 +20,8 @@
 #include <dcb.h>
 #include <resultset.h>
 
+#include "connectionpool.h"
+
 /**
  * @file service.h
  *
@@ -74,19 +76,8 @@ typedef struct {
 	int             n_persistent;  /**< Current persistent pool */
 } SERVER_STATS;
 
-/**
- * Airbnb connection pool statistics structure
- */
 typedef struct {
-	int        n_pool_conns;     /**< Number of connections in pool */
-	int        n_parked_conns;   /**< Number of connections currently parking in pool */
-	int        n_queue_items;    /**< Number of waiting client router sessions */
-	int        n_conns_backend_errors; /**< Number of connections backend errors */
-	int        n_parked_conns_errors;  /**< Number of parked connections backend errors */
-} CONN_POOL_STATS;
-
-typedef struct {
-        CONN_POOL_STATS  pool_stats;      /**< Connection pool statistics */
+        SERVER_CONN_POOL_STATS  pool_stats;      /**< Connection pool statistics */
         long             conn_pool_size;  /**< Connection pool size limit */
         POOL_QUEUE_ITEM *conn_queue_head; /**< List of client query router
                                                sessions waiting for backend connection  */
@@ -241,6 +232,8 @@ extern RESULTSET	*serverGetList();
 
 /** Airproxy connection pool queue */
 
+#define SERVER_CONN_POOL_ENABLED(server) (server->conn_pool.conn_pool_size > 0)
+
 /* server connection pool is fully bootstrapped */
 #define SERVER_CONN_POOL_FULL(server) \
   (server->conn_pool.pool_stats.n_pool_conns == server->persistpoolmax)
@@ -262,5 +255,6 @@ struct server_connection_pool_queue_item
 
 extern void server_enqueue_connection_pool_request(SERVER *server, POOL_QUEUE_ITEM *item);
 extern POOL_QUEUE_ITEM *server_dequeue_connection_pool_request(SERVER *server);
+void server_export_conn_pool_stats(DCB *dcb);
 
 #endif

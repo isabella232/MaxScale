@@ -944,18 +944,10 @@ server_update_port(SERVER *server, unsigned short port)
 /** Airproxy connection pool */
 
 static void
-server_init_conn_pool_stats(SERVER_CONN_POOL *conn_pool)
-{
-    conn_pool->pool_stats.n_pool_conns = 0;
-    conn_pool->pool_stats.n_parked_conns = 0;
-    conn_pool->pool_stats.n_queue_items = 0;
-}
-
-static void
 server_init_conn_pool(SERVER *server)
 {
     SERVER_CONN_POOL *conn_pool = &server->conn_pool;
-    server_init_conn_pool_stats(conn_pool);
+    server_init_conn_pool_stats(server);
     conn_pool->conn_pool_size = 0;
     conn_pool->conn_queue_head = conn_pool->conn_queue_tail = NULL;
     spinlock_init(&conn_pool->conn_queue_lock);
@@ -1025,8 +1017,33 @@ server_clean_connection_pool_queue(SERVER *server)
         gwbuf_free(q->query_buf);
         q->next = NULL;
     }
-    server_init_conn_pool_stats(conn_pool);
+    server_init_conn_pool_stats(server);
     conn_pool->conn_queue_head = conn_pool->conn_queue_tail = NULL;
     conn_pool->pool_stats.n_queue_items = 0;
     spinlock_release(&conn_pool->conn_queue_lock);
+}
+
+void
+server_export_conn_pool_stats(DCB *dcb)
+{
+    SERVER *server;
+    spinlock_acquire(&server_spin);
+    for (server = allServers; server != NULL; server = server->next) {
+        /* generate json object for each server in a json array */
+        if (SERVER_CONN_POOL_ENABLED(server)) {
+            dcb_printf(dcb, "\"server_%s:%d\": {\n", server->name, server->port);
+            dcb_printf(dcb, " \"server.pool_conns\": %d,\n",
+                       server->conn_pool.pool_stats.n_pool_conns);
+            dcb_printf(dcb, " \"server.parked_conns\": %d,\n",
+                       server->conn_pool.pool_stats.n_parked_conns);
+            dcb_printf(dcb, " \"server.queued_reqs\": %d,\n",
+                       server->conn_pool.pool_stats.n_queue_items);
+            dcb_printf(dcb, " \"server.backend_conns_errors\": %d,\n",
+                       server->conn_pool.pool_stats.n_conns_backend_errors);
+            dcb_printf(dcb, " \"server.parked_conns_errors\": %d\n",
+                       server->conn_pool.pool_stats.n_parked_conns_errors);
+            dcb_printf(dcb, "},\n");
+        }
+    }
+    spinlock_release(&server_spin);
 }
