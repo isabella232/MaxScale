@@ -1032,6 +1032,16 @@ static BACKEND *get_root_master(BACKEND **servers) {
 static int handle_state_switch(DCB* dcb,DCB_REASON reason, void * routersession)
 {
     ss_dassert(dcb != NULL);
+
+    /* Airproxy handles none-responding server connection */
+    if (DCB_IS_IN_CONN_POOL(dcb)) {
+        ss_dassert(reason == DCB_REASON_NOT_RESPONDING);
+        if (reason == DCB_REASON_NOT_RESPONDING) {
+            server_backend_connection_not_responding_cb(dcb);
+        }
+        return 0;
+    }
+
     SESSION* session = dcb->session;
     ROUTER_CLIENT_SES* rses = (ROUTER_CLIENT_SES*)routersession;
     SERVICE* service = session->service;
@@ -1080,6 +1090,8 @@ link_dcb_router_session(DCB *backend_dcb, ROUTER_CLIENT_SES *rses)
     DCB_SET_ROUTER_SESSION(backend_dcb, rses, -1);
     rses->backend_dcb = backend_dcb;
     rses->rses_in_pool = false;
+    /* link the backend_dcb with callback data for dcb_add_callback */
+    backend_dcb->callbacks->userdata = rses;
 }
 
 static void
@@ -1092,6 +1104,8 @@ unlink_dcb_router_session(DCB *backend_dcb)
     /* clear router session back pointer, it will be set when a backend_dcb
      * is chosen to link with a client session */
     DCB_SET_ROUTER_SESSION(backend_dcb, NULL, -1);
+    /* clear the backend_dcb callback data i.e. router session */
+    backend_dcb->callbacks->userdata = NULL;
 }
 
 static void

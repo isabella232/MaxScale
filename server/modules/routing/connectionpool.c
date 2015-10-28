@@ -214,6 +214,22 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
     }
 }
 
+void
+server_backend_connection_not_responding_cb(struct dcb *backend_dcb)
+{
+    SERVER *server;
+
+    ss_dassert(backend_dcb != NULL && DCB_IS_IN_CONN_POOL(backend_dcb));
+    ss_dassert(backend_dcb->server != NULL);
+
+    server = backend_dcb->server;
+    LOGIF(LD, (skygw_log_write(LOGFILE_DEBUG,
+        "%lu [server_backend_connection_error_cb] %s %s:%d in state %s",
+        pthread_self(), STRDCBREASON(DCB_REASON_NOT_RESPONDING),
+        server->name, server->port, STRSRVSTATUS(server))));
+
+    backend_dcb->func.hangup(backend_dcb);
+}
 
 /**
  * The housekeeper task collects minutely connection proxy internal stats for

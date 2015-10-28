@@ -3609,9 +3609,9 @@ static bool select_connect_backend_servers(
                                                         (void *)&backend_ref[i]);
                                                 /* register router specific connection
                                                  * pooling callback */
-						init_connection_pool_dcb(backend_ref[i].bref_dcb,
-									 (ROUTER_CLIENT_SES*)session->router_session,
-									 backend_ref, i);
+                                                init_connection_pool_dcb(backend_ref[i].bref_dcb,
+                                                                         (ROUTER_CLIENT_SES*)session->router_session,
+                                                                         backend_ref, i);
                                                 backend_ref[i].bref_state = 0;
                                                 bref_set_state(&backend_ref[i], 
                                                                BREF_IN_USE);
@@ -3674,9 +3674,9 @@ static bool select_connect_backend_servers(
 
                                         /* register router specific connection
                                          * pooling callback */
-					init_connection_pool_dcb(backend_ref[i].bref_dcb,
-								 (ROUTER_CLIENT_SES*)session->router_session,
-								 backend_ref, i);
+                                        init_connection_pool_dcb(backend_ref[i].bref_dcb,
+                                                                 (ROUTER_CLIENT_SES*)session->router_session,
+                                                                 backend_ref, i);
 
                                         backend_ref[i].bref_state = 0;
                                         bref_set_state(&backend_ref[i], 
@@ -5510,6 +5510,14 @@ static int router_handle_state_switch(
         {
                 goto return_rc;
         }
+
+        /* Airproxy handles none-responding server connection */
+        if (DCB_IS_IN_CONN_POOL(dcb)) {
+                if (reason == DCB_REASON_NOT_RESPONDING) {
+                    server_backend_connection_not_responding_cb(dcb);
+                }
+                goto return_rc;
+        }
         
         LOGIF(LD, (skygw_log_write(LOGFILE_DEBUG,
 			"%lu [router_handle_state_switch] %s %s:%d in state %s",
@@ -5722,6 +5730,8 @@ link_dcb_backend_ref(DCB *backend_dcb, ROUTER_CLIENT_SES *rses, backend_ref_t *b
     DCB_SET_ROUTER_SESSION(backend_dcb, rses, bref_index);
     bref->bref_dcb = backend_dcb;
     bref_clear_state(bref, BREF_IN_POOL);
+    /* link the backend_dcb with callback data for dcb_add_callback */
+    backend_dcb->callbacks->userdata = bref;
 }
 
 static void
@@ -5737,6 +5747,8 @@ unlink_dcb_backend_ref(DCB *backend_dcb)
     /* clear router session backend reference back pointer, it will be
      * set when a backend_dcb is chosen to link with a client session */
     DCB_SET_ROUTER_SESSION(backend_dcb, NULL, -1);
+    /* clear the backend_dcb callback data i.e. bref */
+    backend_dcb->callbacks->userdata = NULL;
 }
 
 /**

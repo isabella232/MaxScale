@@ -148,6 +148,9 @@ void protocol_process_query_resultset(struct dcb *backend_dcb, struct gwbuf *res
                                       int first);
 
 
+/** The callback for backend connection not responding error condition */
+void server_backend_connection_not_responding_cb(struct dcb *backend_dcb);
+
 /**
  * Reset backend DCB connection pool query response state before routing query.
  */

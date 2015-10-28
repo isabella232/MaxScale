@@ -868,7 +868,7 @@ static int gw_error_backend_event(DCB *dcb)
         router_instance = session->service->router_instance;
 
         /* Airproxy maintains server connection pool stats */
-        if (DCB_IS_PARKED_IN_POOL(dcb)) {
+        if (DCB_IS_IN_CONN_POOL(dcb)) {
             atomic_add(&dcb->server->conn_pool.pool_stats.n_conns_backend_errors, 1);
         }
 
@@ -1138,7 +1138,7 @@ gw_backend_hangup(DCB *dcb)
         spinlock_release(&session->ses_lock);
 
         /* Airproxy maintains server connection pool stats */
-        if (DCB_IS_PARKED_IN_POOL(dcb)) {
+        if (DCB_IS_IN_CONN_POOL(dcb)) {
             atomic_add(&dcb->server->conn_pool.pool_stats.n_conns_backend_errors, 1);
         }
 
