@@ -1,6 +1,8 @@
 #ifndef _CONNECTIONPOOL_H
 #define _CONNECTIONPOOL_H
 
+#include <time.h>  // gettimeofday
+
 /**
  * @file connectionpool.h - Airbnb connection proxy header file
  */
@@ -11,6 +13,8 @@ struct server;
 struct server_connection_pool_queue_item;
 struct service;
 struct gwbuf;
+
+typedef unsigned long long my_uint64;
 
 /**
  * Connection pooling callback functions
@@ -92,6 +96,7 @@ struct service_conn_pool_minutely_stats {
     int n_client_hangups;          /* number of client connection hangup events */
     int n_client_errors;           /* number of client connection error events */
     int n_client_sessions;         /* number of current client sessions */
+    my_uint64 queries_exec_time;   /* sum of all queries execution time within the period */
 };
 typedef struct service_conn_pool_minutely_stats service_conn_pool_minutely_stats;
 
@@ -103,6 +108,14 @@ enum conn_pool_session_query_state {
     QUERY_RECEIVING_RESULT,
     QUERY_STATE_MAX
 };
+
+
+/** Router session connection pool management data */
+struct session_conn_pool_data {
+    enum conn_pool_session_query_state query_state; /* session query execution state */
+    my_uint64 query_start;                          /* query execution start timer */
+};
+typedef struct session_conn_pool_data session_conn_pool_data;
 
 
 /** Initialize server connection pool queue item */
@@ -151,6 +164,9 @@ void protocol_process_query_resultset(struct dcb *backend_dcb, struct gwbuf *res
 /** The callback for backend connection not responding error condition */
 void server_backend_connection_not_responding_cb(struct dcb *backend_dcb);
 
+my_uint64 measure_query_elapsed_time_micros(my_uint64 query_start_micros);
+
+
 /**
  * Reset backend DCB connection pool query response state before routing query.
  */
@@ -189,5 +205,31 @@ void server_backend_connection_not_responding_cb(struct dcb *backend_dcb);
    stats->n_client_hangups = 0;                                \
    stats->n_client_errors = 0;                                 \
  }
+
+
+/** Initialize router session connection pool state data */
+#define session_init_conn_pool_data(router_ses) \
+  { session_conn_pool_data *data = &router_ses->rses_conn_pool_data; \
+    data->query_state = QUERY_IDLE;                                  \
+    data->query_start = 0;                                           \
+  }
+
+
+/** Set timer to microseconds since epoch */
+#define GET_TIMER_MICROS(timer) \
+  {                                                                     \
+    struct timeval tv;                                                  \
+    my_uint64 tm_micros = 0;                                            \
+    if (gettimeofday(&tv, NULL) == 0) {                                 \
+      tm_micros = ((my_uint64)tv.tv_sec) * 1000000 + (my_uint64)tv.tv_usec; \
+    }                                                                   \
+    timer = tm_micros;                                                  \
+  }
+
+
+/** Start timer to measure query execution time within the Airbnb connection proxy */
+#define START_ROUTER_SESSION_QUERY_TIMER(rses) \
+  { GET_TIMER_MICROS(rses->rses_conn_pool_data.query_start); }
+
 
 #endif /* _CONNECTIONPOOL_H */
