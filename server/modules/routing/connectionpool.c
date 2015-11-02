@@ -31,6 +31,13 @@ extern __thread log_info_t tls_log_info;
 #define MINUTELY_SIZE 2
 service_conn_pool_minutely_stats *conn_proxy_minutely = NULL;
 
+#define RESET_MINUTELY_QUERY_TIME_STATS(stat) \
+  {                                             \
+    stat->queries_exec_time = 0;                \
+    stat->query_max_exec_time = 0;              \
+    stat->query_min_exec_time = 24*60*60*1000;  \
+  }
+
 int conn_proxy_stats_init_cb(SERVICE *service)
 {
     if (conn_proxy_minutely != NULL)
@@ -251,6 +258,11 @@ my_uint64 measure_query_elapsed_time_micros(my_uint64 query_start_micros)
         return 0;
 
     elapsed = end_micros - query_start_micros;
+    if (elapsed > curr->query_max_exec_time)
+        curr->query_max_exec_time = elapsed;
+    else if (elapsed < curr->query_min_exec_time)
+        curr->query_min_exec_time = elapsed;
+
     /* sum query time for computing average minutely query execution time */
     curr->queries_exec_time += elapsed;
     return elapsed;
@@ -271,7 +283,7 @@ hktask_proxy_stats_minutely()
     memcpy(last, curr, sizeof(service_conn_pool_minutely_stats));
     service_conn_pool_stats_minutely(curr);
     /* reset minutely queries execution time info */
-    curr->queries_exec_time = 0;
+    RESET_MINUTELY_QUERY_TIME_STATS(curr);
 }
 
 void conn_proxy_stats_register_cb(SERVICE *service)
@@ -295,6 +307,8 @@ conn_proxy_export_stats_cb(struct dcb *dcb)
     dcb_printf(dcb, "\"proxy\": {\n");
     dcb_printf(dcb, "  \"query_latency_avg\": %lld,\n",
                n_queries > 0 ? curr->queries_exec_time / n_queries : 0);
+    dcb_printf(dcb, "  \"query_latency_max\": %lld,\n", curr->query_max_exec_time);
+    dcb_printf(dcb, "  \"query_latency_min\": %lld,\n", curr->query_min_exec_time);
     dcb_printf(dcb, "  \"queries_routed\": %d,\n", n_queries);
     dcb_printf(dcb, "  \"queries_to_master\": %d,\n",
                curr->n_queries_master - last->n_queries_master);

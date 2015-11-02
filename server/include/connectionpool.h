@@ -97,6 +97,8 @@ struct service_conn_pool_minutely_stats {
     int n_client_errors;           /* number of client connection error events */
     int n_client_sessions;         /* number of current client sessions */
     my_uint64 queries_exec_time;   /* sum of all queries execution time within the period */
+    my_uint64 query_max_exec_time; /* max query execution time within the period */
+    my_uint64 query_min_exec_time; /* min query execution time within the period */
 };
 typedef struct service_conn_pool_minutely_stats service_conn_pool_minutely_stats;
 
