@@ -232,6 +232,31 @@ server_backend_connection_not_responding_cb(struct dcb *backend_dcb)
 }
 
 /**
+ * The elapsed execution time of an individual query measures the entire time
+ * duration within the database connection proxy and actual execution time in
+ * the backend server. The query execution time is measured in microseconds.
+ */
+my_uint64 measure_query_elapsed_time_micros(my_uint64 query_start_micros)
+{
+    my_uint64 elapsed;
+    my_uint64 end_micros;
+    service_conn_pool_minutely_stats *curr = &conn_proxy_minutely[MINUTELY_CURR];
+
+    if (query_start_micros == 0)
+        return 0;
+
+    /* skip invalid timeval due to gettimeofday glitch */
+    GET_TIMER_MICROS(end_micros);
+    if (end_micros <= 0)
+        return 0;
+
+    elapsed = end_micros - query_start_micros;
+    /* sum query time for computing average minutely query execution time */
+    curr->queries_exec_time += elapsed;
+    return elapsed;
+}
+
+/**
  * The housekeeper task collects minutely connection proxy internal stats for
  * router service and backend servers. It separates stats collection from stats
  * serving to external stats agent.
@@ -245,6 +270,8 @@ hktask_proxy_stats_minutely()
     /* copy current minutely to last minutely before overwrite current stats */
     memcpy(last, curr, sizeof(service_conn_pool_minutely_stats));
     service_conn_pool_stats_minutely(curr);
+    /* reset minutely queries execution time info */
+    curr->queries_exec_time = 0;
 }
 
 void conn_proxy_stats_register_cb(SERVICE *service)
@@ -257,15 +284,18 @@ conn_proxy_export_stats_cb(struct dcb *dcb)
 {
     service_conn_pool_minutely_stats *last = &conn_proxy_minutely[MINUTELY_LAST];
     service_conn_pool_minutely_stats *curr = &conn_proxy_minutely[MINUTELY_CURR];
+    int n_queries = curr->n_queries_routed - last->n_queries_routed;
 
     dcb_printf(dcb, "{\n");
 
     /* export servers stats */
     server_export_conn_pool_stats(dcb);
 
+    /* export proxy router service level stats */
     dcb_printf(dcb, "\"proxy\": {\n");
-    dcb_printf(dcb, "  \"queries_routed\": %d,\n",
-               curr->n_queries_routed - last->n_queries_routed);
+    dcb_printf(dcb, "  \"query_latency_avg\": %lld,\n",
+               n_queries > 0 ? curr->queries_exec_time / n_queries : 0);
+    dcb_printf(dcb, "  \"queries_routed\": %d,\n", n_queries);
     dcb_printf(dcb, "  \"queries_to_master\": %d,\n",
                curr->n_queries_master - last->n_queries_master);
     dcb_printf(dcb, "  \"queries_to_slaves\": %d,\n",
