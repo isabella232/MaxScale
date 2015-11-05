@@ -5908,6 +5908,9 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
     /* measure query execution elapsed time and maintain server level stats */
     measure_query_elapsed_time_micros(rses->rses_conn_pool_data.query_start);
 
+    /* track minutely query response data size */
+    track_query_resultset_stats(&backend_dcb->dcb_conn_pool_data.resp_state);
+
     /* keep client session and backend connection linked, if it is known to be
      * within transaction context */
     if (rses->rses_transaction_active) {

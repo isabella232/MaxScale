@@ -55,6 +55,7 @@ typedef struct {
   int resp_nrows;               /* number of row data packets */
   int resp_status;              /* response success 1, error 2 */
   int resp_more_result;         /* has multi resultset */
+  my_uint64 resp_bytes;         /* number of response bytes */
 } CONN_POOL_QUERY_RESPONSE;
 
 
@@ -99,6 +100,9 @@ struct service_conn_pool_minutely_stats {
     my_uint64 queries_exec_time;   /* sum of all queries execution time within the period */
     my_uint64 query_max_exec_time; /* max query execution time within the period */
     my_uint64 query_min_exec_time; /* min query execution time within the period */
+    my_uint64 response_size;       /* sum of all queries resultset size in bytes */
+    my_uint64 response_max_size;   /* max query resultset size in bytes */
+    my_uint64 response_min_size;   /* min query resultset size in bytes */
 };
 typedef struct service_conn_pool_minutely_stats service_conn_pool_minutely_stats;
 
@@ -168,6 +172,8 @@ void server_backend_connection_not_responding_cb(struct dcb *backend_dcb);
 
 my_uint64 measure_query_elapsed_time_micros(my_uint64 query_start_micros);
 
+void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp);
+
 
 /**
  * Reset backend DCB connection pool query response state before routing query.
@@ -177,6 +183,7 @@ my_uint64 measure_query_elapsed_time_micros(my_uint64 query_start_micros);
     resp->resp_eof_count = resp->resp_ncols = 0; resp->resp_nrows = 0;            \
     resp->resp_more_result = 0;                                                   \
     resp->resp_status = RESP_NONE;                                                \
+    resp->resp_bytes = 0;                                                         \
   }
 
 
