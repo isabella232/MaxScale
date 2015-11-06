@@ -180,6 +180,9 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
     unsigned char* buf_ptr = (unsigned char*)response_buf->start;
     unsigned char* buf_end = (unsigned char*)response_buf->end;
 
+    /* sanity check query response state is empty for first response packet */
+    ss_dassert(!first || resp->resp_eof_count == 0);
+
     /* check whether the first response packet is ERR or OK */
     if (first && (PTR_IS_ERR(buf_ptr) || PTR_IS_OK(buf_ptr))) {
         resp->resp_status = PTR_IS_ERR(buf_ptr) ? RESP_ERR : RESP_EOF;

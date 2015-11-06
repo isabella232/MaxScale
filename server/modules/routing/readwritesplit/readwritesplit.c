@@ -3127,6 +3127,7 @@ static void clientReply (
                 /** Set response status as replied */
                 bref_clear_state(bref, BREF_WAITING_RESULT);
                 /* Airproxy track router client session query state */
+                protocol_reset_query_response_state(backend_dcb);
                 router_cli_ses->rses_conn_pool_data.query_state = QUERY_RECEIVING_RESULT;
                 /* Airproxy process resultset packets */
                 protocol_process_query_resultset(backend_dcb, writebuf, 1);
@@ -5938,7 +5939,7 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
             forward_request_query((ROUTER_CLIENT_SES *)req->router_session,
                                 (GWBUF *)req->query_buf, backend_dcb);
             /* clear the embedded POOL_QUEUE_ITEM, and query_buf should have
-	     * been consumed and therefore no need of gwbuf_free here */
+             * been consumed and therefore no need of gwbuf_free here */
             req->query_buf = req->next = NULL;
             park_dcb = false;
         }
