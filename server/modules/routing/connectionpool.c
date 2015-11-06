@@ -36,6 +36,8 @@ service_conn_pool_minutely_stats *conn_proxy_minutely = NULL;
     stat->queries_exec_time = 0;                \
     stat->query_max_exec_time = 0;              \
     stat->query_min_exec_time = 24*60*60*1000;  \
+    stat->response_size = stat->response_max_size = 0; \
+    stat->response_min_size = 0xFFFFFFFFFFFFFFFF;      \
   }
 
 int conn_proxy_stats_init_cb(SERVICE *service)
@@ -179,6 +181,7 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
     CONN_POOL_QUERY_RESPONSE *resp = &backend_dcb->dcb_conn_pool_data.resp_state;
     unsigned char* buf_ptr = (unsigned char*)response_buf->start;
     unsigned char* buf_end = (unsigned char*)response_buf->end;
+    int n_bytes = 0;
 
     /* sanity check query response state is empty for first response packet */
     ss_dassert(!first || resp->resp_eof_count == 0);
@@ -186,6 +189,7 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
     /* check whether the first response packet is ERR or OK */
     if (first && (PTR_IS_ERR(buf_ptr) || PTR_IS_OK(buf_ptr))) {
         resp->resp_status = PTR_IS_ERR(buf_ptr) ? RESP_ERR : RESP_EOF;
+        resp->resp_bytes = (buf_end - (unsigned char*)response_buf->start);
         return;
     }
 
@@ -193,7 +197,7 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
     if (resp->resp_eof_count == 0) {
         int len;
         ss_dassert(resp->resp_status == RESP_NONE);
-        for (len = 0; buf_ptr < buf_end; buf_ptr += len, resp->resp_ncols++) {
+        for (len = 0; buf_ptr < buf_end; buf_ptr += len, n_bytes += len, resp->resp_ncols++) {
             len = MYSQL_GET_PACKET_LEN(buf_ptr) + 4;
             if (PTR_IS_ERR(buf_ptr) || PTR_IS_EOF(buf_ptr)) {
                 resp->resp_status = PTR_IS_ERR(buf_ptr) ? RESP_ERR : RESP_NONE;
@@ -210,7 +214,7 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
     /* scan row data packets followed by the last EOF (or ERR) packet */
     if (resp->resp_status == RESP_NONE && resp->resp_eof_count == 1) {
         int len;
-        for (len = 0; buf_ptr < buf_end; buf_ptr += len, resp->resp_nrows++) {
+        for (len = 0; buf_ptr < buf_end; buf_ptr += len, n_bytes += len, resp->resp_nrows++) {
             len = MYSQL_GET_PACKET_LEN(buf_ptr) + 4;
             if (PTR_IS_ERR(buf_ptr) || PTR_IS_EOF(buf_ptr)) {
                 resp->resp_status = PTR_IS_ERR(buf_ptr) ? RESP_ERR : RESP_EOF;
@@ -222,6 +226,10 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
         }
         ss_dassert(buf_ptr == buf_end);
     }
+
+    /* keep track of query resultset data size in bytes */
+    ss_dassert((buf_end - (unsigned char*)response_buf->start) == n_bytes);
+    resp->resp_bytes += n_bytes;
 }
 
 void
@@ -271,6 +279,18 @@ my_uint64 measure_query_elapsed_time_micros(my_uint64 query_start_micros)
     return elapsed;
 }
 
+void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp)
+{
+    service_conn_pool_minutely_stats *curr = &conn_proxy_minutely[MINUTELY_CURR];
+
+    ss_dassert(resp->resp_status == RESP_EOF || resp->resp_status == RESP_ERR);
+    curr->response_size += resp->resp_bytes;
+    if (resp->resp_bytes > curr->response_max_size)
+        curr->response_max_size = resp->resp_bytes;
+    if (resp->resp_bytes > 0 && resp->resp_bytes < curr->response_min_size)
+        curr->response_min_size = resp->resp_bytes;
+}
+
 /**
  * The housekeeper task collects minutely connection proxy internal stats for
  * router service and backend servers. It separates stats collection from stats
@@ -312,6 +332,12 @@ conn_proxy_export_stats_cb(struct dcb *dcb)
                n_queries > 0 ? curr->queries_exec_time / n_queries : 0);
     dcb_printf(dcb, "  \"query_latency_max\": %lld,\n", curr->query_max_exec_time);
     dcb_printf(dcb, "  \"query_latency_min\": %lld,\n", curr->query_min_exec_time);
+    dcb_printf(dcb, "  \"query_response_size_kb\": %lld,\n",
+               curr->response_size / 1024);
+    dcb_printf(dcb, "  \"query_response_size_max_kb\": %lld,\n",
+               curr->response_max_size / 1024);
+    dcb_printf(dcb, "  \"query_response_size_min\": %lld,\n",
+               curr->response_min_size);
     dcb_printf(dcb, "  \"queries_routed\": %d,\n", n_queries);
     dcb_printf(dcb, "  \"queries_to_master\": %d,\n",
                curr->n_queries_master - last->n_queries_master);
