@@ -5755,6 +5755,14 @@ unlink_dcb_backend_ref(DCB *backend_dcb)
     backend_dcb->callbacks->userdata = NULL;
 }
 
+static void
+handle_query_routing_error(DCB *backend_dcb, backend_ref_t* bref)
+{
+    bref_clear_state(bref, BREF_IN_USE);
+    bref_set_state(bref, BREF_CLOSED);
+    pool_handle_backend_failure(backend_dcb);
+}
+
 /**
  * This is the connection pool engaging entry point on the query route path.
  * It first looks for an available connection in the pool. If no luck, it
@@ -5870,8 +5878,13 @@ forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb
         rses->rses_conn_pool_data.query_state = QUERY_ROUTED;
         rc = true;
     } else {
+        SERVER *server = bref->bref_backend->backend_server;
         LOGIF((LE|LT), (skygw_log_write_flush(
-            LOGFILE_ERROR, "Error : Routing query failed.")));
+              LOGFILE_ERROR, "Error: server %s routing query failed.",
+              server->name)));
+        atomic_add(&server->conn_pool.pool_stats.n_query_routing_errors, 1);
+        /* close client connection and router session because of backend failure */
+        handle_query_routing_error(backend_dcb, bref);
         rc = false;
     }
 
