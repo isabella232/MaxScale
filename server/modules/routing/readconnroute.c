@@ -1178,6 +1178,7 @@ static bool
 forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb)
 {
     int rc;
+    SERVER *server;
 
     LOGIF(LD, (skygw_log_write(
             LOGFILE_DEBUG,
@@ -1195,13 +1196,18 @@ forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb
         rses_end_locked_router_action(rses);
         return false;
     }
+    server = rses->backend->server;
     rses_end_locked_router_action(rses);
 
     /* forward query to backend server */
     rc = backend_dcb->func.write(backend_dcb, querybuf);
     if (rc != 1) {
         LOGIF((LE|LT), (skygw_log_write_flush(
-            LOGFILE_ERROR, "Error : forward request query failed.")));
+               LOGFILE_ERROR, "Error : server %s routing query failed.",
+               server->name)));
+        atomic_add(&server->conn_pool.pool_stats.n_query_routing_errors, 1);
+        /* close client connection and router session because of backend failure */
+        pool_handle_backend_failure(backend_dcb);
         return false;
     }
     return true;

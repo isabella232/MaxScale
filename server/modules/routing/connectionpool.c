@@ -233,7 +233,7 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
 }
 
 void
-server_backend_connection_not_responding_cb(struct dcb *backend_dcb)
+server_backend_connection_not_responding_cb(DCB *backend_dcb)
 {
     SERVER *server;
 
@@ -247,6 +247,34 @@ server_backend_connection_not_responding_cb(struct dcb *backend_dcb)
         server->name, server->port, STRSRVSTATUS(server))));
 
     backend_dcb->func.hangup(backend_dcb);
+}
+
+/**
+ * In the connection pooling mode, there is no point of retrying backend connection to
+ * different backend mysql servers in the readwritesplit router. Instead, it simply
+ * send error message and close the client connection.
+ */
+void
+pool_handle_backend_failure(DCB *backend_dcb)
+{
+    session_state_t session_state;
+    DCB *client_dcb;
+    SESSION *session = backend_dcb->session;
+
+    ss_dassert(DCB_IS_IN_CONN_POOL(backend_dcb) && backend_dcb->session != NULL);
+
+    spinlock_acquire(&session->ses_lock);
+    session_state = session->state;
+    client_dcb = session->client;
+    spinlock_release(&session->ses_lock);
+
+    if (session_state == SESSION_STATE_ROUTER_READY) {
+        GWBUF* errmsg = mysql_create_custom_error(1, 0,
+                                                  "Connection pooling backend routing failed. "
+                                                  "Session will be closed.");
+        CHK_DCB(client_dcb);
+        client_dcb->func.write(client_dcb, gwbuf_clone(errmsg));
+    }
 }
 
 /**

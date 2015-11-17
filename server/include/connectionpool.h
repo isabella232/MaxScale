@@ -68,6 +68,7 @@ struct server_conn_pool_stats {
     int n_queue_items;             /* number of waiting client router sessions */
     int n_conns_backend_errors;    /* number of connections backend errors */
     int n_parked_conns_errors;     /* number of parked connections backend errors */
+    int n_query_routing_errors;    /* number of query routing errors */
 };
 typedef struct server_conn_pool_stats SERVER_CONN_POOL_STATS;
 
@@ -132,6 +133,9 @@ void pool_init_queue_item(struct server_connection_pool_queue_item *queue_item,
 int pool_park_connection(struct dcb *backend_dcb);
 int pool_unpark_connection(struct dcb **p_dcb, struct session *client_session,
 			   struct server *server, char *user, void *cb_arg);
+
+/** Error handler for backend connection query routing failure */
+void pool_handle_backend_failure(struct dcb *backend_dcb);
 
 /**
  * Callbacks to initialize internal minutely conncection proxy stats structure
@@ -203,6 +207,7 @@ void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp);
     server->conn_pool.pool_stats.n_queue_items = 0;          \
     server->conn_pool.pool_stats.n_conns_backend_errors = 0; \
     server->conn_pool.pool_stats.n_parked_conns_errors = 0;  \
+    server->conn_pool.pool_stats.n_query_routing_errors = 0; \
   }
 
 /** Initialize service level connection pool stats */
