@@ -5951,7 +5951,6 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
         protocol_reset_query_response_state(backend_dcb);
         req = server_dequeue_connection_pool_request(server);
         if (req != NULL) {
-            /* FIXME(liang) must send error to client if query routing failed */
             forward_request_query((ROUTER_CLIENT_SES *)req->router_session,
                                 (GWBUF *)req->query_buf, backend_dcb);
             /* clear the embedded POOL_QUEUE_ITEM, and query_buf should have
