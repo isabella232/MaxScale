@@ -49,6 +49,9 @@ _RETVAL_STATUS_NOT_RUNNING=3
 # Source additional command line arguments.
 [ -f /etc/sysconfig/maxscale ] &&  . /etc/sysconfig/maxscale
 
+# Make sure we can capture core dump
+ulimit -c unlimited
+
 # we can rearrange this easily
 processname=maxscale
 servicename=maxscale
