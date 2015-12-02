@@ -58,9 +58,11 @@ typedef struct router_client_session {
 	struct router_client_session *next;
         int             rses_capabilities; /*< input type, for example */
 
+        session_conn_pool_data rses_conn_pool_data; /*< session connection pooling state */
         POOL_QUEUE_ITEM rses_queue_item;  /*< embedded server connection pool queue item */
         bool            rses_in_pool;     /*< router session backend connection in pool */
         SESSION        *rses_client_session; /*< client session back pointer */
+        struct router_instance *rses_router;   /*< router instance */
 #if defined(SS_DEBUG)
         skygw_chk_t     rses_chk_tail;
 #endif
