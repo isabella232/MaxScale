@@ -2783,6 +2783,7 @@ static bool route_single_stmt(
 			    DCB_IS_IN_CONN_POOL(target_dcb))
 			{
 			    rses->rses_conn_pool_data.query_state = QUERY_ROUTED;
+			    START_MYSQL_QUERY_EXEC_TIMER(rses);
 			}
 		}
 		else
@@ -5870,6 +5871,7 @@ forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb
     ss_dassert(rses->rses_conn_pool_data.query_state < QUERY_ROUTED);
     rc = backend_dcb->func.write(backend_dcb, querybuf);
     if (rc == 1) {
+        START_MYSQL_QUERY_EXEC_TIMER(rses);
         atomic_add(&rses->router->stats.n_queries, 1);
         /* add query response waiter to backend reference */
         bref_set_state(bref, BREF_QUERY_ACTIVE);
@@ -5919,7 +5921,8 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
     }
 
     /* measure query execution elapsed time and maintain server level stats */
-    measure_query_elapsed_time_micros(rses->rses_conn_pool_data.query_start);
+    measure_query_elapsed_time_micros(rses->rses_conn_pool_data.query_start,
+                                      rses->rses_conn_pool_data.query_exec_start);
 
     /* track minutely query response data size */
     track_query_resultset_stats(&backend_dcb->dcb_conn_pool_data.resp_state);

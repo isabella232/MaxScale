@@ -101,6 +101,9 @@ struct service_conn_pool_minutely_stats {
     my_uint64 queries_exec_time;   /* sum of all queries execution time within the period */
     my_uint64 query_max_exec_time; /* max query execution time within the period */
     my_uint64 query_min_exec_time; /* min query execution time within the period */
+    my_uint64 mysql_exec_time;     /* sum of all mysql execution time within the period */
+    my_uint64 mysql_max_exec_time; /* max mysql execution time within the period */
+    my_uint64 mysql_min_exec_time; /* min mysql execution time within the period */
     my_uint64 response_size;       /* sum of all queries resultset size in bytes */
     my_uint64 response_max_size;   /* max query resultset size in bytes */
     my_uint64 response_min_size;   /* min query resultset size in bytes */
@@ -121,6 +124,7 @@ enum conn_pool_session_query_state {
 struct session_conn_pool_data {
     enum conn_pool_session_query_state query_state; /* session query execution state */
     my_uint64 query_start;                          /* query execution start timer */
+    my_uint64 query_exec_start;                     /* query execution start timer */
 };
 typedef struct session_conn_pool_data session_conn_pool_data;
 
@@ -174,7 +178,8 @@ void protocol_process_query_resultset(struct dcb *backend_dcb, struct gwbuf *res
 /** The callback for backend connection not responding error condition */
 void server_backend_connection_not_responding_cb(struct dcb *backend_dcb);
 
-my_uint64 measure_query_elapsed_time_micros(my_uint64 query_start_micros);
+my_uint64 measure_query_elapsed_time_micros(my_uint64 query_start_micros,
+                                            my_uint64 exec_start_micros);
 
 void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp);
 
@@ -226,6 +231,7 @@ void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp);
   { session_conn_pool_data *data = &router_ses->rses_conn_pool_data; \
     data->query_state = QUERY_IDLE;                                  \
     data->query_start = 0;                                           \
+    data->query_exec_start = 0;                                      \
   }
 
 
@@ -245,5 +251,9 @@ void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp);
 #define START_ROUTER_SESSION_QUERY_TIMER(rses) \
   { GET_TIMER_MICROS(rses->rses_conn_pool_data.query_start); }
 
+
+/** Start timer to measure mysql query response time at proxy side */
+#define START_MYSQL_QUERY_EXEC_TIMER(rses) \
+  { GET_TIMER_MICROS(rses->rses_conn_pool_data.query_exec_start); }
 
 #endif /* _CONNECTIONPOOL_H */

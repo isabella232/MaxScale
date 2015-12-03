@@ -36,6 +36,9 @@ service_conn_pool_minutely_stats *conn_proxy_minutely = NULL;
     stat->queries_exec_time = 0;                \
     stat->query_max_exec_time = 0;              \
     stat->query_min_exec_time = 24*60*60*1000;  \
+    stat->mysql_exec_time = 0;                  \
+    stat->mysql_max_exec_time = 0;              \
+    stat->mysql_min_exec_time = 24*60*60*1000;  \
     stat->response_size = stat->response_max_size = 0; \
     stat->response_min_size = 0xFFFFFFFFFFFFFFFF;      \
   }
@@ -282,9 +285,11 @@ pool_handle_backend_failure(DCB *backend_dcb)
  * duration within the database connection proxy and actual execution time in
  * the backend server. The query execution time is measured in microseconds.
  */
-my_uint64 measure_query_elapsed_time_micros(my_uint64 query_start_micros)
+my_uint64
+measure_query_elapsed_time_micros(my_uint64 query_start_micros,
+                                  my_uint64 exec_start_micros)
 {
-    my_uint64 elapsed;
+    my_uint64 elapsed, elapsed_mysql;
     my_uint64 end_micros;
     service_conn_pool_minutely_stats *curr = &conn_proxy_minutely[MINUTELY_CURR];
 
@@ -302,8 +307,15 @@ my_uint64 measure_query_elapsed_time_micros(my_uint64 query_start_micros)
     else if (elapsed < curr->query_min_exec_time)
         curr->query_min_exec_time = elapsed;
 
+    elapsed_mysql = end_micros - exec_start_micros;
+    if (elapsed_mysql > curr->mysql_max_exec_time)
+        curr->mysql_max_exec_time = elapsed_mysql;
+    else if (elapsed_mysql < curr->mysql_min_exec_time)
+        curr->mysql_min_exec_time = elapsed_mysql;
+
     /* sum query time for computing average minutely query execution time */
     curr->queries_exec_time += elapsed;
+    curr->mysql_exec_time += elapsed_mysql;
     return elapsed;
 }
 
@@ -360,6 +372,10 @@ conn_proxy_export_stats_cb(struct dcb *dcb)
                n_queries > 0 ? curr->queries_exec_time / n_queries : 0);
     dcb_printf(dcb, "  \"query_latency_max\": %lld,\n", curr->query_max_exec_time);
     dcb_printf(dcb, "  \"query_latency_min\": %lld,\n", curr->query_min_exec_time);
+    dcb_printf(dcb, "  \"mysql_latency_avg\": %lld,\n",
+               n_queries > 0 ? curr->mysql_exec_time / n_queries : 0);
+    dcb_printf(dcb, "  \"mysql_latency_max\": %lld,\n", curr->mysql_max_exec_time);
+    dcb_printf(dcb, "  \"mysql_latency_min\": %lld,\n", curr->mysql_min_exec_time);
     dcb_printf(dcb, "  \"query_response_size_kb\": %lld,\n",
                curr->response_size / 1024);
     dcb_printf(dcb, "  \"query_response_size_max_kb\": %lld,\n",
