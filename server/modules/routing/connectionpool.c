@@ -207,6 +207,7 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
                 resp->resp_eof_count++;
                 /* move past the EOF packet */
                 buf_ptr += len;
+                n_bytes += len;
                 /* discount the first columns count packet prior to column definition pakcets */
                 resp->resp_ncols -= 1;
                 break;
@@ -224,6 +225,7 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
                 resp->resp_eof_count++;
                 /* move past the last EOF packet */
                 buf_ptr += len;
+                n_bytes += len;
                 break;
             }
         }
