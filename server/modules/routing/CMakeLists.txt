@@ -6,7 +6,7 @@ if(BUILD_TESTS)
 endif()
 
 add_library(connectionpool SHARED connectionpool.c)
-target_link_libraries(connectionpool log_manager)
+target_link_libraries(connectionpool log_manager MySQLBackend)
 install(TARGETS connectionpool DESTINATION ${MAXSCALE_LIBDIR})
 
 add_library(readconnroute SHARED readconnroute.c)
