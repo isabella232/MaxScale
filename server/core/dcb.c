@@ -1825,6 +1825,7 @@ dcb_maybe_add_persistent(DCB *dcb)
         && !dcb->dcb_errhandle_called
         && !(dcb->flags & DCBF_HUNG)
         && (poolcount = dcb_persistent_clean_count(dcb, false)) < dcb->server->persistpoolmax
+        && (!config_connection_pool_enabled() || !strcmp(user, config_server_connection_pool_user()))
         && (!config_connection_pool_enabled() || !DCB_IS_IN_AUTH_PHASE(dcb) || !SERVER_CONN_POOL_FULL(dcb->server)))
     {
         LOGIF(LD, (skygw_log_write(

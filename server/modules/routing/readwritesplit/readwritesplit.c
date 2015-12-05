@@ -824,6 +824,20 @@ static void* newSession(
         int                 i;
         const int           min_nservers = 1; /*< hard-coded for now */
         
+        /* Airproxy restricts to one single user for connection pool, and reject other
+         * users except service health check user */
+#if 0
+        if (config_connection_pool_enabled())
+        {
+            char *user = session_getUser(session);
+            if (strcmp(user, config_service_health_check_user()) != 0 &&
+                strcmp(user, config_server_connection_pool_user()) != 0)
+            {
+                goto return_rses;
+            }
+        }
+#endif
+
         client_rses = (ROUTER_CLIENT_SES *)calloc(1, sizeof(ROUTER_CLIENT_SES));
         
         if (client_rses == NULL)

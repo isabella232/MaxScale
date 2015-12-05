@@ -1591,6 +1591,15 @@ int i;
         else
             skygw_log_write(LE, "Invalid timeout value for 'auth_write_timeout': %s", value);
 	}
+	/* Airbnb server restricted user and dbproxy service health check user */
+	if (strcmp(name, "server_connection_pool_user") == 0)
+	{
+            gateway.server_connection_pool_user = strdup(value);
+	}
+	if (strcmp(name, "service_health_check_user") == 0)
+	{
+            gateway.service_health_check_user = strdup(value);
+	}
 	else
 	{
 		for (i = 0; lognames[i].logname; i++)
@@ -2670,5 +2679,23 @@ GATEWAY_CONF* config_get_global_options()
  */
 bool config_connection_pool_enabled()
 {
-  return gateway.server_connection_pools > 0;
+    return gateway.server_connection_pools > 0;
+}
+
+/**
+ * Return the user that is configured to user server connection pool.
+ */
+char*
+config_server_connection_pool_user()
+{
+    return gateway.server_connection_pool_user;
+}
+
+/**
+ * Return the user that is configured for service health check.
+ */
+char*
+config_service_health_check_user()
+{
+    return gateway.service_health_check_user;
 }
