@@ -5925,7 +5925,9 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
                                       rses->rses_conn_pool_data.query_exec_start);
 
     /* track minutely query response data size */
-    track_query_resultset_stats(&backend_dcb->dcb_conn_pool_data.resp_state);
+    if (!DCB_IS_IN_AUTH_PHASE(backend_dcb)) {
+        track_query_resultset_stats(&backend_dcb->dcb_conn_pool_data.resp_state);
+    }
 
     /* keep client session and backend connection linked, if it is known to be
      * within transaction context */
