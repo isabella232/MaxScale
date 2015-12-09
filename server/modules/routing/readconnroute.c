@@ -1298,7 +1298,9 @@ server_backend_connection_pool_cb(DCB *backend_dcb)
                                       rses->rses_conn_pool_data.query_exec_start);
 
     /* track minutely query response data size */
-    track_query_resultset_stats(&backend_dcb->dcb_conn_pool_data.resp_state);
+    if (!DCB_IS_IN_AUTH_PHASE(backend_dcb)) {
+        track_query_resultset_stats(&backend_dcb->dcb_conn_pool_data.resp_state);
+    }
 
     server = rses->backend->server;
     ss_dassert(SERVER_USE_CONN_POOL(server));
