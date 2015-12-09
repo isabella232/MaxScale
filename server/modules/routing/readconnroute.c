@@ -277,6 +277,11 @@ char		*weightby;
 	}
 	inst->servers[n] = NULL;
 
+	/* Airproxy lazily sets router connection pooling callback pointer */
+	if (service->conn_pool_func == NULL) {
+	    service->conn_pool_func = &router_conn_pool_cb;
+	}
+
 	if ((weightby = serviceGetWeightingParameter(service)) != NULL)
 	{
 		int total = 0;
@@ -896,7 +901,10 @@ clientReply(
 	    return;
 	}
 
-	if (router_cli_ses->rses_conn_pool_data.query_state == QUERY_ROUTED) {
+	if (router_cli_ses->rses_conn_pool_data.query_state != QUERY_RECEIVING_RESULT) {
+	    ss_dassert(router_cli_ses->rses_conn_pool_data.query_state == QUERY_ROUTED ||
+	               (router_cli_ses->rses_conn_pool_data.query_state == QUERY_IDLE &&
+	                DCB_IS_IN_AUTH_PHASE(backend_dcb)));
 	    /* Airproxy track router client session query state */
 	    protocol_reset_query_response_state(backend_dcb);
 	    router_cli_ses->rses_conn_pool_data.query_state = QUERY_RECEIVING_RESULT;
@@ -905,7 +913,6 @@ clientReply(
 	}
 	/* Airproxy continue scanning mysql packets for partial query resultset */
 	else {
-	    ss_dassert(router_cli_ses->rses_conn_pool_data.query_state == QUERY_RECEIVING_RESULT);
 	    protocol_process_query_resultset(backend_dcb, queue, 0);
 	}
 
