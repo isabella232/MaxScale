@@ -2143,7 +2143,9 @@ void service_export_conn_proxy_stats(DCB *dcb)
     }
     spinlock_release(&service_spin);
 
-    if (service != NULL && config_connection_pool_enabled()) {
+    if (service != NULL && config_connection_pool_enabled() &&
+        service->conn_pool_func != NULL)
+    {
         service->conn_pool_func->router_proxy_export_stats(dcb);
     }
 }
