@@ -1090,13 +1090,17 @@ static int handle_state_switch(DCB* dcb,DCB_REASON reason, void * routersession)
 {
     ss_dassert(dcb != NULL);
 
-    /* Airproxy handles none-responding server connection */
+    /* Airproxy handles non-responding server connection */
     if (DCB_IS_IN_CONN_POOL(dcb)) {
         ss_dassert(reason == DCB_REASON_NOT_RESPONDING);
         if (reason == DCB_REASON_NOT_RESPONDING) {
             server_backend_connection_not_responding_cb(dcb);
+            return 0;
+        } else {
+            /* Note: bypass useless variables initialization, and rework if
+             * they are indeed used in the future */
+            goto handle_reason;
         }
-        return 0;
     }
 
     SESSION* session = dcb->session;
@@ -1104,6 +1108,7 @@ static int handle_state_switch(DCB* dcb,DCB_REASON reason, void * routersession)
     SERVICE* service = session->service;
     ROUTER* router = (ROUTER *)service->router;
 
+handle_reason:
     switch(reason)
     {
 	case DCB_REASON_CLOSE:

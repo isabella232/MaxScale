@@ -5507,9 +5507,17 @@ static int router_handle_state_switch(
         SESSION*           ses;
         CHK_DCB(dcb);
         bref = (backend_ref_t *)data;
+
+        /* Airproxy parked backend connection is unlinked from bref, get access
+         * to backend server via dcb instead of bref */
+        if (bref == NULL) {
+            ss_dassert(DCB_IS_PARKED_IN_POOL(dcb));
+            srv = dcb->server;
+        } else {
         CHK_BACKEND_REF(bref);
        
 	srv = bref->bref_backend->backend_server;
+        }
 	
         if (SERVER_IS_RUNNING(srv) && SERVER_IS_IN_CLUSTER(srv))
         {
