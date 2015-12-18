@@ -295,7 +295,7 @@ measure_query_elapsed_time_micros(my_uint64 query_start_micros,
     my_uint64 end_micros;
     service_conn_pool_minutely_stats *curr = &conn_proxy_minutely[MINUTELY_CURR];
 
-    if (query_start_micros == 0)
+    if (query_start_micros == 0 || exec_start_micros == 0)
         return 0;
 
     /* skip invalid timeval due to gettimeofday glitch */
