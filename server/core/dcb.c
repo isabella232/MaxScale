@@ -1869,6 +1869,11 @@ dcb_maybe_add_persistent(DCB *dcb)
             dcb->dcb_errhandle_called ? "true" : "false",
             (dcb->flags & DCBF_HUNG) ? "true" : "false",
             poolcount)));
+      /* Airproxy adjusts server connection pool stat and DCB pooling state, if necessary */
+      if (DCB_IS_IN_CONN_POOL(dcb)) {
+          atomic_add(&dcb->server->conn_pool.pool_stats.n_pool_conns, -1);
+          DCB_CLR_IN_CONN_POOL(dcb);
+      }
     }
     return false;
 }

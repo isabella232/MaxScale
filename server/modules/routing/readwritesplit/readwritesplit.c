@@ -322,6 +322,7 @@ static void init_connection_pool_dcb(DCB* backend_dcb, ROUTER_CLIENT_SES *rses,
 				     backend_ref_t *brefs, int bref_idx);
 static int try_server_connection(ROUTER_CLIENT_SES *rses, backend_ref_t *bref);
 static void enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf);
+static void dequeue_server_connection_pool(ROUTER_CLIENT_SES *rses);
 static int server_backend_connection_pool_cb(DCB *backend_dcb);
 static int server_backend_connection_pool_link_cb(DCB *backend_dcb, int link_mode,
 						  int rses_locked, void *arg);
@@ -1078,6 +1079,12 @@ static void closeSession(
                                 atomic_add(&bref->bref_backend->backend_conn_count, -1);
                         }
                 }
+
+                /* Airproxy clean up server connection pool queue request */
+                if (router_cli_ses->rses_bref_queued != NULL) {
+                    dequeue_server_connection_pool(router_cli_ses);
+                }
+
                 /** Unlock */
                 rses_end_locked_router_action(router_cli_ses);                
         }
@@ -5831,7 +5838,8 @@ enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf)
     /* The caller should have acquired router session lock already, and it'd be
      * nice if we could verify this thread is the owner of router session lock */
 
-    ss_dassert(rses->rses_bref_queued != NULL);
+    if (rses->rses_bref_queued == NULL)
+        return;
     server = rses->rses_bref_queued->bref_backend->backend_server;
     ss_dassert(server != NULL);
 
@@ -5844,6 +5852,30 @@ enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf)
     ss_dassert(queue_item->next == NULL);
     queue_item->query_buf = querybuf;
     server_enqueue_connection_pool_request(server, queue_item);
+}
+
+/**
+ * It removes an enqueued POOL_ITEM from the server connection pool queue.
+ * The caller should have acquired router session lock already.
+ */
+static void
+dequeue_server_connection_pool(ROUTER_CLIENT_SES *rses)
+{
+    SERVER *server = NULL;
+    POOL_QUEUE_ITEM *queue_item = &rses->rses_queue_item;
+
+    if (rses->rses_bref_queued == NULL)
+        return;
+    server = rses->rses_bref_queued->bref_backend->backend_server;
+    ss_dassert(server != NULL);
+    ss_dassert(queue_item->router_session == rses);
+    server_remove_connection_pool_request(server, queue_item);
+    /* queue item has sole ownership of the querybuf */
+    gwbuf_free(queue_item->query_buf);
+    /* clear the embedded POOL_QUEUE_ITEM */
+    queue_item->query_buf = queue_item->next = NULL;
+    /* clear target bref of queued request */
+    rses->rses_bref_queued = NULL;
 }
 
 static bool

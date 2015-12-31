@@ -255,6 +255,7 @@ struct server_connection_pool_queue_item
 
 extern void server_enqueue_connection_pool_request(SERVER *server, POOL_QUEUE_ITEM *item);
 extern POOL_QUEUE_ITEM *server_dequeue_connection_pool_request(SERVER *server);
+extern void server_remove_connection_pool_request(SERVER *server, POOL_QUEUE_ITEM *item);
 void server_export_conn_pool_stats(DCB *dcb);
 
 #endif
