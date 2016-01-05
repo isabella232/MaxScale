@@ -74,6 +74,17 @@ typedef struct server_conn_pool_stats SERVER_CONN_POOL_STATS;
 
 
 /**
+ * Stats holder for server level minutely stats.
+ */
+struct server_conn_pool_minutely_stats {
+    int n_conns_backend_errors;    /* number of connections backend errors */
+    int n_parked_conns_errors;     /* number of parked connections backend errors */
+    int n_query_routing_errors;    /* number of query routing errors */
+};
+typedef struct server_conn_pool_minutely_stats SERVER_CONN_POOL_MINUTELY_STATS;
+
+
+/**
  * Service level connection pool counter stats
  */
 struct service_conn_pool_stats {
@@ -214,6 +225,15 @@ void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp);
     server->conn_pool.pool_stats.n_parked_conns_errors = 0;  \
     server->conn_pool.pool_stats.n_query_routing_errors = 0; \
   }
+
+/** Maintain minutely server level connection pool stats holder */
+#define server_copy_minutely_conn_pool_stats(server) \
+  {                                                                                 \
+    SERVER_CONN_POOL_MINUTELY_STATS* last = &server->conn_pool.pool_stats_minutely; \
+    last->n_conns_backend_errors = server->conn_pool.pool_stats.n_conns_backend_errors; \
+    last->n_parked_conns_errors = server->conn_pool.pool_stats.n_parked_conns_errors; \
+    last->n_query_routing_errors = server->conn_pool.pool_stats.n_query_routing_errors; \
+}
 
 /** Initialize service level connection pool stats */
 #define service_init_conn_pool_stats(service) \
