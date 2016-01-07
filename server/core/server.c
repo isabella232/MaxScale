@@ -1006,6 +1006,34 @@ server_dequeue_connection_pool_request(SERVER *server)
     return item;
 }
 
+/**
+ * Remove the given pool item from the server connection pool request queue.
+ */
+void
+server_remove_connection_pool_request(SERVER *server, POOL_QUEUE_ITEM *item)
+{
+    SERVER_CONN_POOL *conn_pool = &server->conn_pool;
+    spinlock_acquire(&conn_pool->conn_queue_lock);
+    for (POOL_QUEUE_ITEM *q = conn_pool->conn_queue_head, *prev = NULL;
+         q != NULL; prev = q, q = q->next)
+    {
+        if (q == item) {
+            if (prev != NULL) {
+                prev->next = item->next;
+            } else {
+                ss_dassert(conn_pool->conn_queue_head == item);
+                conn_pool->conn_queue_head = q->next;
+            }
+            if (conn_pool->conn_queue_tail == item) {
+                conn_pool->conn_queue_tail = prev;
+            }
+            atomic_add(&conn_pool->pool_stats.n_queue_items, -1);
+            break;
+        }
+    }
+    spinlock_release(&conn_pool->conn_queue_lock);
+}
+
 static void
 server_clean_connection_pool_queue(SERVER *server)
 {

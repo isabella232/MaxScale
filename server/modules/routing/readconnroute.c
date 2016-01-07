@@ -158,6 +158,7 @@ static ROUTER_INSTANCE *instances;
 
 static void init_connection_pool_dcb(DCB *backend_dcb, ROUTER_CLIENT_SES *rses,
                                      ROUTER_INSTANCE *inst);
+static void dequeue_server_connection_pool(ROUTER_CLIENT_SES *rses);
 static int try_server_connection_or_enqueue(DCB **p_dcb, ROUTER_CLIENT_SES *rses,
 					    GWBUF *querybuf);
 static int server_backend_connection_pool_cb(DCB *backend_dcb);
@@ -700,6 +701,10 @@ DCB*              backend_dcb;
                 backend_dcb = router_cli_ses->backend_dcb;
                 router_cli_ses->backend_dcb = NULL;
                 router_cli_ses->rses_closed = true;
+                /* Airproxy clean up server connection pool queue request */
+                if (router_cli_ses->rses_queue_item.query_buf != NULL) {
+                    dequeue_server_connection_pool(router_cli_ses);
+                }
                 /** Unlock */
                 rses_end_locked_router_action(router_cli_ses);
                 
@@ -1190,6 +1195,24 @@ enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf)
     ss_dassert(queue_item->next == NULL);
     queue_item->query_buf = querybuf;
     server_enqueue_connection_pool_request(server, queue_item);
+}
+
+static void
+dequeue_server_connection_pool(ROUTER_CLIENT_SES *rses)
+{
+    SERVER *server = NULL;
+    POOL_QUEUE_ITEM *queue_item = &rses->rses_queue_item;
+
+    ss_dassert(queue_item->router_session == rses);
+    if (queue_item->query_buf == NULL)
+        return;
+    server = rses->backend->server;
+    ss_dassert(server != NULL);
+    server_remove_connection_pool_request(server, queue_item);
+    /* queue item has sole ownership of the querybuf */
+    gwbuf_free(queue_item->query_buf);
+    /* clear the embedded POOL_QUEUE_ITEM */
+    queue_item->query_buf = queue_item->next = NULL;
 }
 
 /**
