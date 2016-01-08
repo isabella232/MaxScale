@@ -370,14 +370,18 @@ conn_proxy_export_stats_cb(struct dcb *dcb)
 
     /* export proxy router service level stats */
     dcb_printf(dcb, "\"proxy\": {\n");
-    dcb_printf(dcb, "  \"query_latency_avg\": %lld,\n",
-               n_queries > 0 ? curr->queries_exec_time / n_queries : 0);
-    dcb_printf(dcb, "  \"query_latency_max\": %lld,\n", curr->query_max_exec_time);
-    dcb_printf(dcb, "  \"query_latency_min\": %lld,\n", curr->query_min_exec_time);
-    dcb_printf(dcb, "  \"mysql_latency_avg\": %lld,\n",
-               n_queries > 0 ? curr->mysql_exec_time / n_queries : 0);
-    dcb_printf(dcb, "  \"mysql_latency_max\": %lld,\n", curr->mysql_max_exec_time);
-    dcb_printf(dcb, "  \"mysql_latency_min\": %lld,\n", curr->mysql_min_exec_time);
+    dcb_printf(dcb, "  \"query_latency_avg\": %.3Lf,\n",
+               n_queries > 0 ? (long double)curr->queries_exec_time / (long double)n_queries / 1000 : 0);
+    dcb_printf(dcb, "  \"query_latency_max\": %.3Lf,\n",
+               (long double)curr->query_max_exec_time / 1000);
+    dcb_printf(dcb, "  \"query_latency_min\": %.3Lf,\n",
+               (long double)curr->query_min_exec_time / 1000);
+    dcb_printf(dcb, "  \"mysql_latency_avg\": %.3Lf,\n",
+               n_queries > 0 ? (long double)curr->mysql_exec_time / (long double)n_queries / 1000 : 0);
+    dcb_printf(dcb, "  \"mysql_latency_max\": %.3Lf,\n",
+               (long double)curr->mysql_max_exec_time / 1000);
+    dcb_printf(dcb, "  \"mysql_latency_min\": %.3Lf,\n",
+               (long double)curr->mysql_min_exec_time / 1000);
     dcb_printf(dcb, "  \"query_response_size_kb\": %lld,\n",
                curr->response_size / 1024);
     dcb_printf(dcb, "  \"query_response_size_max_kb\": %lld,\n",
