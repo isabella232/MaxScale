@@ -349,6 +349,8 @@ hktask_proxy_stats_minutely()
     service_conn_pool_stats_minutely(curr);
     /* reset minutely queries execution time info */
     RESET_MINUTELY_QUERY_TIME_STATS(curr);
+    /* copy server level counter stats to last minutely for minutely stats */
+    server_conn_pool_stats_minutely();
 }
 
 void conn_proxy_stats_register_cb(SERVICE *service)

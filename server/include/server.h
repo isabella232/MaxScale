@@ -77,7 +77,8 @@ typedef struct {
 } SERVER_STATS;
 
 typedef struct {
-        SERVER_CONN_POOL_STATS  pool_stats;      /**< Connection pool statistics */
+        SERVER_CONN_POOL_STATS  pool_stats;         /**< Connection pool statistics */
+        SERVER_CONN_POOL_MINUTELY_STATS pool_stats_minutely; /**< Connection pool minutely stats */
         long             conn_pool_size;  /**< Connection pool size limit */
         POOL_QUEUE_ITEM *conn_queue_head; /**< List of client query router
                                                sessions waiting for backend connection  */
@@ -256,6 +257,7 @@ struct server_connection_pool_queue_item
 extern void server_enqueue_connection_pool_request(SERVER *server, POOL_QUEUE_ITEM *item);
 extern POOL_QUEUE_ITEM *server_dequeue_connection_pool_request(SERVER *server);
 extern void server_remove_connection_pool_request(SERVER *server, POOL_QUEUE_ITEM *item);
+void server_conn_pool_stats_minutely();
 void server_export_conn_pool_stats(DCB *dcb);
 
 #endif

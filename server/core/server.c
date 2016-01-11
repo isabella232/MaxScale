@@ -1053,6 +1053,18 @@ server_clean_connection_pool_queue(SERVER *server)
     spinlock_release(&conn_pool->conn_queue_lock);
 }
 
+void server_conn_pool_stats_minutely()
+{
+    SERVER *server;
+    spinlock_acquire(&server_spin);
+    for (server = allServers; server != NULL; server = server->next) {
+        if (!SERVER_CONN_POOL_ENABLED(server))
+            continue;
+        server_copy_minutely_conn_pool_stats(server);
+    }
+    spinlock_release(&server_spin);
+}
+
 void
 server_export_conn_pool_stats(DCB *dcb)
 {
@@ -1061,6 +1073,8 @@ server_export_conn_pool_stats(DCB *dcb)
     for (server = allServers; server != NULL; server = server->next) {
         /* generate json object for each server in a json array */
         if (SERVER_CONN_POOL_ENABLED(server)) {
+            SERVER_CONN_POOL_STATS* curr = &server->conn_pool.pool_stats;
+            SERVER_CONN_POOL_MINUTELY_STATS* last = &server->conn_pool.pool_stats_minutely;
             dcb_printf(dcb, "\"server_%s:%d\": {\n", server->name, server->port);
             dcb_printf(dcb, " \"server.pool_conns\": %d,\n",
                        server->conn_pool.pool_stats.n_pool_conns);
@@ -1068,12 +1082,13 @@ server_export_conn_pool_stats(DCB *dcb)
                        server->conn_pool.pool_stats.n_parked_conns);
             dcb_printf(dcb, " \"server.queued_reqs\": %d,\n",
                        server->conn_pool.pool_stats.n_queue_items);
+            /* export minutely backend connections stats */
             dcb_printf(dcb, " \"server.backend_conns_errors\": %d,\n",
-                       server->conn_pool.pool_stats.n_conns_backend_errors);
+                       curr->n_conns_backend_errors - last->n_conns_backend_errors);
             dcb_printf(dcb, " \"server.parked_conns_errors\": %d,\n",
-                       server->conn_pool.pool_stats.n_parked_conns_errors);
+                       curr->n_parked_conns_errors - last->n_parked_conns_errors);
             dcb_printf(dcb, " \"server.query_routing_errors\": %d\n",
-                       server->conn_pool.pool_stats.n_query_routing_errors);
+                       curr->n_query_routing_errors - last->n_query_routing_errors);
             dcb_printf(dcb, "},\n");
         }
     }
