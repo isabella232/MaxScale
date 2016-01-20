@@ -1087,8 +1087,13 @@ server_export_conn_pool_stats(DCB *dcb)
                        curr->n_conns_backend_errors - last->n_conns_backend_errors);
             dcb_printf(dcb, " \"server.parked_conns_errors\": %d,\n",
                        curr->n_parked_conns_errors - last->n_parked_conns_errors);
-            dcb_printf(dcb, " \"server.query_routing_errors\": %d\n",
+            dcb_printf(dcb, " \"server.query_routing_errors\": %d,\n",
                        curr->n_query_routing_errors - last->n_query_routing_errors);
+            /* minutely resultset processing stats */
+            dcb_printf(dcb, " \"server.fast_resultset_processing\": %d,\n",
+                       last->n_fast_resultset_proc);
+            dcb_printf(dcb, " \"server.normal_resultset_processing\": %d\n",
+                       last->n_normal_resultset_proc);
             dcb_printf(dcb, "},\n");
         }
     }
