@@ -118,6 +118,8 @@ struct service_conn_pool_minutely_stats {
     my_uint64 response_size;       /* sum of all queries resultset size in bytes */
     my_uint64 response_max_size;   /* max query resultset size in bytes */
     my_uint64 response_min_size;   /* min query resultset size in bytes */
+    int poll_events_queue_len;     /* epoll events queue length */
+    int poll_events_queue_max;     /* minutely max events queue length */
 };
 typedef struct service_conn_pool_minutely_stats service_conn_pool_minutely_stats;
 
@@ -191,6 +193,9 @@ void server_backend_connection_not_responding_cb(struct dcb *backend_dcb);
 
 my_uint64 measure_query_elapsed_time_micros(my_uint64 query_start_micros,
                                             my_uint64 exec_start_micros);
+
+/** Minutely task to collect epoll events stats for monitoring */
+void poll_events_stats_minutely(service_conn_pool_minutely_stats *stats);
 
 void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp);
 

@@ -347,6 +347,7 @@ hktask_proxy_stats_minutely()
     /* copy current minutely to last minutely before overwrite current stats */
     memcpy(last, curr, sizeof(service_conn_pool_minutely_stats));
     service_conn_pool_stats_minutely(curr);
+    poll_events_stats_minutely(curr);
     /* reset minutely queries execution time info */
     RESET_MINUTELY_QUERY_TIME_STATS(curr);
     /* copy server level counter stats to last minutely for minutely stats */
@@ -403,7 +404,9 @@ conn_proxy_export_stats_cb(struct dcb *dcb)
                curr->n_client_hangups - last->n_client_hangups);
     dcb_printf(dcb, "  \"client_errors\": %d,\n",
                curr->n_client_errors - last->n_client_errors);
-    dcb_printf(dcb, "  \"client_sessions\": %d \n", curr->n_client_sessions);
+    dcb_printf(dcb, "  \"client_sessions\": %d, \n", curr->n_client_sessions);
+    dcb_printf(dcb, "  \"event_queue_length\": %d, \n", curr->poll_events_queue_len);
+    dcb_printf(dcb, "  \"event_queue_length_max\": %d \n", last->poll_events_queue_max);
     dcb_printf(dcb, "}\n");
 
     dcb_printf(dcb, "}\n");
