@@ -36,6 +36,8 @@
 #include <mysql.h>
 #include <resultset.h>
 
+#include <connectionpool.h> // for service_conn_pool_minutely_stats
+
 #define		PROFILE_POLL	0
 
 #if PROFILE_POLL
@@ -168,6 +170,7 @@ static struct {
 	int	evq_max;	/*< Maximum event queue length */
 	int	wake_evqpending;/*< Woken from epoll_wait with pending events in queue */
 	int	blockingpolls;	/*< Number of epoll_waits with a timeout specified */
+	int     evq_max_minutely; /*< Minutely max of event queue length */
 } pollStats;
 
 #define	N_QUEUE_TIMES	30
@@ -699,6 +702,10 @@ int		   poll_spins = 0;
 					if (pollStats.evq_length > pollStats.evq_max)
 					{
 						pollStats.evq_max = pollStats.evq_length;
+					}
+					if (pollStats.evq_length > pollStats.evq_max_minutely)
+					{
+						pollStats.evq_max_minutely = pollStats.evq_length;
 					}
 				}
 				spinlock_release(&pollqlock);
@@ -1475,6 +1482,10 @@ static void poll_add_event_to_dcb(
 		{
 			pollStats.evq_max = pollStats.evq_length;
 		}
+		if (pollStats.evq_length > pollStats.evq_max_minutely)
+		{
+			pollStats.evq_max_minutely = pollStats.evq_length;
+		}
 	}
 	spinlock_release(&pollqlock);
 }
@@ -1543,6 +1554,10 @@ uint32_t ev = EPOLLOUT;
 		if (pollStats.evq_length > pollStats.evq_max)
 		{
 			pollStats.evq_max = pollStats.evq_length;
+		}
+		if (pollStats.evq_length > pollStats.evq_max_minutely)
+		{
+			pollStats.evq_max_minutely = pollStats.evq_length;
 		}
 	}
 	spinlock_release(&pollqlock);
@@ -1717,4 +1732,13 @@ int		*data;
 	resultset_add_column(set, "No. Events Executed", 12, COL_TYPE_VARCHAR);
 
 	return set;
+}
+
+void poll_events_stats_minutely(service_conn_pool_minutely_stats *stats)
+{
+    spinlock_acquire(&pollqlock);
+    stats->poll_events_queue_len = pollStats.evq_length;
+    stats->poll_events_queue_max = pollStats.evq_max_minutely;
+    pollStats.evq_max_minutely = 0;
+    spinlock_release(&pollqlock);
 }
