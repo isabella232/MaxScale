@@ -1833,6 +1833,7 @@ dcb_maybe_add_persistent(DCB *dcb)
             pthread_self(),
             dcb, dcb->server != NULL ? dcb->server : 0,
             user)));
+        ss_dassert(dcb->user == NULL);
         dcb->user = strdup(user);
         dcb->persistentstart = time(NULL);
         session_unlink_dcb(dcb->session, dcb);
@@ -3229,7 +3230,7 @@ static void dcb_init_conn_pool_data(DCB *dcb)
  */
 void dcb_add_server_persistent_connection_fast(DCB *dcb)
 {
-    ss_dassert(dcb->user != NULL && dcb->server != NULL);
+    ss_dassert(dcb->user == NULL && dcb->server != NULL);
     ss_dassert(dcb->session == NULL);
     LOGIF(LD, (skygw_log_write(
         LOGFILE_DEBUG,
@@ -3253,7 +3254,7 @@ void dcb_add_server_persistent_connection_fast(DCB *dcb)
 bool dcb_park_server_connection_pool(DCB *dcb)
 {
     bool ret;
-    ss_dassert(dcb != NULL && dcb->server != NULL);
+    ss_dassert(dcb != NULL && dcb->server != NULL && dcb->user == NULL);
     ret = dcb_maybe_add_persistent(dcb);
     if (ret) {
         LOGIF(LD, (skygw_log_write(
