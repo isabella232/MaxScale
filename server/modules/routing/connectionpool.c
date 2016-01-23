@@ -185,9 +185,11 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
     unsigned char* buf_ptr = (unsigned char*)response_buf->start;
     unsigned char* buf_end = (unsigned char*)response_buf->end;
     int n_bytes = 0;
+    SERVER *server = backend_dcb->server;
 
     /* sanity check query response state is empty for first response packet */
     ss_dassert(!first || resp->resp_eof_count == 0);
+    ss_dassert(server != NULL);
 
     /* check whether the first response packet is ERR or OK */
     if (first && (PTR_IS_ERR(buf_ptr) || PTR_IS_OK(buf_ptr))) {
@@ -215,6 +217,20 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
         }
     }
 
+    /* optimization to skip rows packets sniffing and examine EOF at the end, if not seeing EOF
+       at the reverse offset from the end, fall back to rows scanning */
+    if (resp->resp_status == RESP_NONE && resp->resp_eof_count == 1) {
+        /* move back 5-bytes payload, 3 bytes packet len, 1 byte sequence id */
+        unsigned char *buf_ptr2 = buf_end - 5 - 4;
+        /* if the buffer still has data and last 9-byte packet is EOF */
+        if (buf_ptr < buf_end && PTR_IS_EOF(buf_ptr2)) {
+            /* found EOF and will not do the next block of packets sniffing */
+            resp->resp_status = RESP_EOF;
+            resp->resp_eof_count++;
+            atomic_add(&server->conn_pool.pool_stats.n_fast_resultset_proc, 1);
+        }
+    }
+
     /* scan row data packets followed by the last EOF (or ERR) packet */
     if (resp->resp_status == RESP_NONE && resp->resp_eof_count == 1) {
         int len;
@@ -226,15 +242,16 @@ protocol_process_query_resultset(DCB *backend_dcb, GWBUF *response_buf, int firs
                 /* move past the last EOF packet */
                 buf_ptr += len;
                 n_bytes += len;
+                atomic_add(&server->conn_pool.pool_stats.n_normal_resultset_proc, 1);
                 break;
             }
         }
         ss_dassert(buf_ptr == buf_end);
+        ss_dassert((buf_end - (unsigned char*)response_buf->start) == n_bytes);
     }
 
     /* keep track of query resultset data size in bytes */
-    ss_dassert((buf_end - (unsigned char*)response_buf->start) == n_bytes);
-    resp->resp_bytes += n_bytes;
+    resp->resp_bytes += (buf_end - (unsigned char*)response_buf->start);
 }
 
 void
@@ -404,8 +421,8 @@ conn_proxy_export_stats_cb(struct dcb *dcb)
                curr->n_client_hangups - last->n_client_hangups);
     dcb_printf(dcb, "  \"client_errors\": %d,\n",
                curr->n_client_errors - last->n_client_errors);
-    dcb_printf(dcb, "  \"client_sessions\": %d, \n", curr->n_client_sessions);
-    dcb_printf(dcb, "  \"event_queue_length\": %d, \n", curr->poll_events_queue_len);
+    dcb_printf(dcb, "  \"client_sessions\": %d,\n", curr->n_client_sessions);
+    dcb_printf(dcb, "  \"event_queue_length\": %d,\n", curr->poll_events_queue_len);
     dcb_printf(dcb, "  \"event_queue_length_max\": %d \n", last->poll_events_queue_max);
     dcb_printf(dcb, "}\n");
 
