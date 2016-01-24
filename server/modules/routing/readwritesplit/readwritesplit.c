@@ -5739,8 +5739,8 @@ link_dcb_backend_ref(DCB *backend_dcb, ROUTER_CLIENT_SES *rses, backend_ref_t *b
 {
     SESSION *client_session = rses->client_dcb->session;
 
-    /* dcb->user was cleared when added to persistent connections pool */
-    backend_dcb->user = strdup(client_session->client->user);
+    /* dcb->user was cleared when unparked from persistent connections pool */
+    ss_dassert(backend_dcb->user == NULL);
 
     // FIXME(liang) assume master and pass bref_index, this may not work for two
     // backend_refs because it is object array but pointer array
