@@ -1151,8 +1151,8 @@ handle_reason:
 static void
 link_dcb_router_session(DCB *backend_dcb, ROUTER_CLIENT_SES *rses)
 {
-    /* dcb->user was cleared when added to persistent connections pool */
-    backend_dcb->user = strdup(backend_dcb->session->client->user);
+    /* dcb->user was cleared when unparked from persistent connections pool */
+    ss_dassert(backend_dcb->user == NULL);
     /* link the backend_dcb with router session backend ref */
     DCB_SET_ROUTER_SESSION(backend_dcb, rses, -1);
     rses->backend_dcb = backend_dcb;
