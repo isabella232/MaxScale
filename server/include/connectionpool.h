@@ -68,6 +68,7 @@ struct server_conn_pool_stats {
     int n_queue_items;             /* number of waiting client router sessions */
     int n_conns_backend_errors;    /* number of connections backend errors */
     int n_parked_conns_errors;     /* number of parked connections backend errors */
+    int n_conns_close_by_client_error; /* number of connections closed due to client session errors */
     int n_query_routing_errors;    /* number of query routing errors */
     int n_fast_resultset_proc;     /* number of optimized resultset processing */
     int n_normal_resultset_proc;   /* number of complete resultset processing */
@@ -82,6 +83,7 @@ typedef struct server_conn_pool_stats SERVER_CONN_POOL_STATS;
 struct server_conn_pool_minutely_stats {
     int n_conns_backend_errors;    /* number of connections backend errors */
     int n_parked_conns_errors;     /* number of parked connections backend errors */
+    int n_conns_close_by_client_error; /* number of connections closed due to client session errors */
     int n_query_routing_errors;    /* number of query routing errors */
     int n_fast_resultset_proc;     /* number of optimized resultset processing */
     int n_normal_resultset_proc;   /* number of complete resultset processing */
@@ -234,6 +236,7 @@ void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp);
     server->conn_pool.pool_stats.n_conns_backend_errors = 0; \
     server->conn_pool.pool_stats.n_parked_conns_errors = 0;  \
     server->conn_pool.pool_stats.n_query_routing_errors = 0; \
+    server->conn_pool.pool_stats.n_conns_close_by_client_error = 0; \
     server->conn_pool.pool_stats.n_fast_resultset_proc = 0;  \
     server->conn_pool.pool_stats.n_normal_resultset_proc = 0; \
   }
@@ -247,6 +250,7 @@ void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp);
     last->n_query_routing_errors = server->conn_pool.pool_stats.n_query_routing_errors; \
     last->n_fast_resultset_proc = server->conn_pool.pool_stats.n_fast_resultset_proc; \
     last->n_normal_resultset_proc = server->conn_pool.pool_stats.n_normal_resultset_proc; \
+    last->n_conns_close_by_client_error = server->conn_pool.pool_stats.n_conns_close_by_client_error; \
     /* reset minutely counter stats */                                  \
     server->conn_pool.pool_stats.n_fast_resultset_proc = 0;             \
     server->conn_pool.pool_stats.n_normal_resultset_proc = 0;           \

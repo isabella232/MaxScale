@@ -137,6 +137,7 @@ typedef struct session {
 	int		refcount;	  /*< Reference count on the session */
 	bool            ses_is_child;	  /*< this is a child session */
 	bool            ses_ignore_sescmd; /*< Airproxy ignore session command */
+	bool            ses_error_hungup;  /*< Airproxy client error event or hangup event */
 #if defined(SS_DEBUG)
         skygw_chk_t     ses_chk_tail;
 #endif

@@ -132,7 +132,9 @@ session_alloc(SERVICE *service, DCB *client_dcb)
      */
     session->state = SESSION_STATE_READY;
 
-    session->ses_ignore_sescmd = false; /* Airproxy connection pooling mode */
+    /* Airproxy connection pooling mode */
+    session->ses_ignore_sescmd = false;
+    session->ses_error_hungup = false;
 
     /*< Release session lock */
     spinlock_release(&session->ses_lock);
