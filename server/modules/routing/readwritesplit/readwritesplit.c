@@ -5903,6 +5903,12 @@ forward_request_query(ROUTER_CLIENT_SES *rses, GWBUF *querybuf, DCB *backend_dcb
     client_session = rses->client_dcb->session;
     ss_dassert(client_session != NULL);
     if (!session_link_dcb(client_session, backend_dcb)) {
+        /* client session had gone away, no need of forwarding */
+        LOGIF((LE|LT), (skygw_log_write_flush(
+              LOGFILE_ERROR,
+              "Error : unable to link with client session %p (dcb &p), no query frowarding",
+              client_session, client_session->client)));
+        gwbuf_free(querybuf);
         rses_end_locked_router_action(rses);
         return false;
     }
