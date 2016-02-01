@@ -85,13 +85,20 @@ int
 pool_park_connection(DCB *backend_dcb)
 {
     bool rc = 0;
-    SESSION *session = NULL;
+    char *user = NULL;
 
     if (backend_dcb->state != DCB_STATE_POLLING) {
         return 0;
     }
 
+    /* allow the configured user to use server connection pool */
     ss_dassert(backend_dcb->session != NULL);
+    user = session_getUser(backend_dcb->session);
+    ss_dassert(user != NULL);
+    if (strcmp(user, config_server_connection_pool_user()) != 0) {
+        return 0;
+    }
+
     /* add backend DCB to server persistent connections pool */
     if (dcb_park_server_connection_pool(backend_dcb)) {
         backend_dcb->conn_pool_func->pool_link_cb(backend_dcb, 0, 0, NULL);

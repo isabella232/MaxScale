@@ -408,6 +408,20 @@ BACKEND                 *candidate = NULL;
 int                     i;
 BACKEND *master_host = NULL;
 
+        /* Airproxy restricts to one single user for connection pool, and reject other
+         * users except service health check user */
+#if 0
+        if (config_connection_pool_enabled())
+        {
+            char *user = session_getUser(session);
+            if (strcmp(user, config_service_health_check_user()) != 0 &&
+                strcmp(user, config_server_connection_pool_user()) != 0)
+            {
+                return NULL;
+            }
+        }
+#endif
+
         LOGIF(LD, (skygw_log_write_flush(
                 LOGFILE_DEBUG,
                 "%lu [newSession] new router session with session "

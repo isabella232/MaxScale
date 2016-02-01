@@ -111,6 +111,8 @@ typedef struct {
         unsigned int auth_write_timeout; /*<  Write timeout for the user authentication */
 
         unsigned int            server_connection_pools; /**< Airproxy connection pooling enabled */
+        char                   *server_connection_pool_user; /**< Airproxy restricted user */
+        char                   *service_health_check_user; /**< Airproxy service health check user */
 } GATEWAY_CONF;
 
 extern int		config_load(char *);
@@ -155,4 +157,6 @@ bool isInternalService(char *router);
 char* config_clean_string_list(char* str);
 
 bool config_connection_pool_enabled(void); /* Airproxy connection pool */
+char* config_server_connection_pool_user();
+char* config_service_health_check_user();
 #endif
