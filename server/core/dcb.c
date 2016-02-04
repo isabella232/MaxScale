@@ -1817,7 +1817,31 @@ dcb_maybe_add_persistent(DCB *dcb)
 {
     char *user;
     int  poolcount = -1;
+    bool conn_pool_dcb_ok = true;
+    /* Airproxy does not park a backend connection for two cases,
+     * 1, it is for authentication and pool is fully bootstrapped;
+     * 2, its client session had error event or hangup event.
+     *
+     * The second is for both safety and correctness measure. If a client session
+     * had active transaction or had outstanding query, it'd be wrong to let other
+     * client session to mistakenly use the transaction or receive resultset that
+     * belong to previous client.
+     */
     user = session_getUser(dcb->session);
+    if (config_connection_pool_enabled()) {
+        /* allow configured user to access connection pool */
+        if (strcmp(user, config_server_connection_pool_user()) != 0) {
+            conn_pool_dcb_ok = false;
+        }
+        if (conn_pool_dcb_ok && DCB_IS_IN_AUTH_PHASE(dcb) && SERVER_CONN_POOL_FULL(dcb->server)) {
+            conn_pool_dcb_ok = false;
+        }
+        if (conn_pool_dcb_ok && DCB_IS_IN_CONN_POOL(dcb) && dcb->session->ses_error_hungup) {
+            conn_pool_dcb_ok = false;
+            atomic_add(&dcb->server->conn_pool.pool_stats.n_conns_close_by_client_error, 1);
+        }
+    }
+
     if (user 
         && strlen(user)
         && dcb->server 
@@ -1825,8 +1849,7 @@ dcb_maybe_add_persistent(DCB *dcb)
         && !dcb->dcb_errhandle_called
         && !(dcb->flags & DCBF_HUNG)
         && (poolcount = dcb_persistent_clean_count(dcb, false)) < dcb->server->persistpoolmax
-        && (!config_connection_pool_enabled() || !strcmp(user, config_server_connection_pool_user()))
-        && (!config_connection_pool_enabled() || !DCB_IS_IN_AUTH_PHASE(dcb) || !SERVER_CONN_POOL_FULL(dcb->server)))
+        && conn_pool_dcb_ok)
     {
         LOGIF(LD, (skygw_log_write(
             LOGFILE_DEBUG,

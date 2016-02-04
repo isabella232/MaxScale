@@ -1833,6 +1833,11 @@ static int gw_error_client_event(
         if (dcb->service != NULL) {
             dcb->service->conn_pool_stats.n_client_errors++;
         }
+        /* Airproxy marks session in error or hungup such that its backend connection
+         * will not return to connection pool and be reused */
+        if (session != NULL) {
+            session->ses_error_hungup = true;
+        }
 
         dcb_close(dcb);
         
@@ -1931,6 +1936,11 @@ gw_client_hangup_event(DCB *dcb)
         /* Airproxy maintains service connection pool stats */
         if (dcb->service != NULL) {
             dcb->service->conn_pool_stats.n_client_hangups++;
+        }
+        /* Airproxy marks session in error or hungup such that its backend connection
+         * will not return to connection pool and be reused */
+        if (session != NULL) {
+            session->ses_error_hungup = true;
         }
 
         dcb_close(dcb);

@@ -574,6 +574,8 @@ SERVER_PARAM	*param;
                       server->conn_pool.pool_stats.n_parked_conns_errors);
            dcb_printf(dcb, "\t\tQuery routing errors:  %d\n",
                       server->conn_pool.pool_stats.n_query_routing_errors);
+           dcb_printf(dcb, "\t\tBackend connections closed by client errors:  %d\n",
+                      server->conn_pool.pool_stats.n_conns_close_by_client_error);
        }
 }
 
@@ -1094,6 +1096,8 @@ server_export_conn_pool_stats(DCB *dcb)
                        last->n_fast_resultset_proc);
             dcb_printf(dcb, " \"server.normal_resultset_processing\": %d\n",
                        last->n_normal_resultset_proc);
+            dcb_printf(dcb, " \"server.conns_closed_by_client_errors\": %d\n",
+                       curr->n_conns_close_by_client_error - last->n_conns_close_by_client_error);
             dcb_printf(dcb, "},\n");
         }
     }
