@@ -5,14 +5,29 @@ function(debugmsg MSG)
   endif()
 endfunction()
 
+# Airbnb Maxscale extra version
+macro(GET_EXTRA_VERSION_VALUE keyword var)
+ if(NOT ${var})
+   FILE (STRINGS ${CMAKE_SOURCE_DIR}/AIRBNB_VERSION str REGEX "^[ ]*${keyword}=")
+   if(str)
+     STRING(REPLACE "${keyword}=" "" str ${str})
+     STRING(REGEX REPLACE  "[ ].*" ""  str "${str}")
+     SET(${var} ${str})
+   endif()
+ endif()
+endmacro()
+
 macro(set_maxscale_version)
+
+  # Get Airbnb extra version number
+  GET_EXTRA_VERSION_VALUE("AIRBNB_VERSION_EXTRA" MAXSCALE_VERSION_EXTRA)
 
   # MaxScale version number
   set(MAXSCALE_VERSION_MAJOR "1")
   set(MAXSCALE_VERSION_MINOR "2")
   set(MAXSCALE_VERSION_PATCH "0")
-  set(MAXSCALE_VERSION_NUMERIC "${MAXSCALE_VERSION_MAJOR}.${MAXSCALE_VERSION_MINOR}.${MAXSCALE_VERSION_PATCH}")
-  set(MAXSCALE_VERSION "${MAXSCALE_VERSION_MAJOR}.${MAXSCALE_VERSION_MINOR}.${MAXSCALE_VERSION_PATCH}")
+  set(MAXSCALE_VERSION_NUMERIC "${MAXSCALE_VERSION_MAJOR}.${MAXSCALE_VERSION_MINOR}.${MAXSCALE_VERSION_PATCH}.${MAXSCALE_VERSION_EXTRA}")
+  set(MAXSCALE_VERSION "${MAXSCALE_VERSION_MAJOR}.${MAXSCALE_VERSION_MINOR}.${MAXSCALE_VERSION_PATCH}.${MAXSCALE_VERSION_EXTRA}")
 
   # This should be incremented each time a package is rebuilt
   set(MAXSCALE_BUILD_NUMBER 1)
