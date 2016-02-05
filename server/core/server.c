@@ -1094,7 +1094,7 @@ server_export_conn_pool_stats(DCB *dcb)
             /* minutely resultset processing stats */
             dcb_printf(dcb, " \"server.fast_resultset_processing\": %d,\n",
                        last->n_fast_resultset_proc);
-            dcb_printf(dcb, " \"server.normal_resultset_processing\": %d\n",
+            dcb_printf(dcb, " \"server.normal_resultset_processing\": %d,\n",
                        last->n_normal_resultset_proc);
             dcb_printf(dcb, " \"server.conns_closed_by_client_errors\": %d\n",
                        curr->n_conns_close_by_client_error - last->n_conns_close_by_client_error);
