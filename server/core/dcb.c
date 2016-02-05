@@ -1830,7 +1830,7 @@ dcb_maybe_add_persistent(DCB *dcb)
     user = session_getUser(dcb->session);
     if (config_connection_pool_enabled()) {
         /* allow configured user to access connection pool */
-        if (strcmp(user, config_server_connection_pool_user()) != 0) {
+        if (user != NULL && strcmp(user, config_server_connection_pool_user()) != 0) {
             conn_pool_dcb_ok = false;
         }
         if (conn_pool_dcb_ok && DCB_IS_IN_AUTH_PHASE(dcb) && SERVER_CONN_POOL_FULL(dcb->server)) {
