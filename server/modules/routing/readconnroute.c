@@ -1242,9 +1242,14 @@ dequeue_server_connection_pool(ROUTER_CLIENT_SES *rses)
     server = rses->backend->server;
     ss_dassert(server != NULL);
     server_remove_connection_pool_request(server, queue_item);
-    /* queue item has sole ownership of the querybuf */
-    if (queue_item->query_buf)
+    /* if called for housekeeper cleanup of client sessions, skip buffer free
+     * in risk of memory leak because housekeeper would crash attempting to
+     * free embedded_thd in parsing_info_done. Scheduled rolling proxy restart
+     * will take care of the rare memory leak. */
+    if (!DCB_IS_IN_HK_CLEANUP(rses->client_dcb) && queue_item->query_buf) {
+        /* queue item has sole ownership of the querybuf */
         gwbuf_free(queue_item->query_buf);
+    }
     /* clear the embedded POOL_QUEUE_ITEM */
     queue_item->query_buf = queue_item->next = NULL;
 }
