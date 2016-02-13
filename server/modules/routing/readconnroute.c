@@ -1194,10 +1194,29 @@ enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf)
 {
     SERVER *server = NULL;
     POOL_QUEUE_ITEM *queue_item = &rses->rses_queue_item;
+    int max_queue_depth = config_server_connection_pool_throttle();
 
     ss_dassert(rses->backend_dcb == NULL);
     server = rses->backend->server;
     ss_dassert(server != NULL);
+
+    /* If the server connection pool queue depth is over threshold, kill client
+     * session so that it would not be penalized with query elevated latency */
+    if (!SERVER_IS_RUNNING(server) ||
+        server->conn_pool.pool_stats.n_queue_items >= max_queue_depth)
+    {
+        /* must release router session lock before terminating client session */
+        rses_end_locked_router_action(rses);
+        gwbuf_free(querybuf);
+        dcb_close(rses->rses_client_session->client);
+        atomic_add(&server->conn_pool.pool_stats.n_throttled_queue_reqs, 1);
+        LOGIF(LE, (skygw_log_write_flush(
+                     LOGFILE_ERROR,
+                     "%lu [enqueue_server_connection_pool] Close client session "
+                     "due to connection pool queue depth over threshold.",
+                     pthread_self())));
+        return;
+    }
 
     LOGIF(LD, (skygw_log_write(
             LOGFILE_DEBUG,
@@ -1206,7 +1225,7 @@ enqueue_server_connection_pool(ROUTER_CLIENT_SES *rses, GWBUF *querybuf)
             pthread_self(), rses, server,
 	    rses->rses_client_session, rses->rses_client_session->client)));
     ss_dassert(queue_item->router_session == rses);
-    ss_dassert(queue_item->next == NULL);
+    queue_item->next = NULL;
     queue_item->query_buf = querybuf;
     server_enqueue_connection_pool_request(server, queue_item);
 }
@@ -1224,7 +1243,8 @@ dequeue_server_connection_pool(ROUTER_CLIENT_SES *rses)
     ss_dassert(server != NULL);
     server_remove_connection_pool_request(server, queue_item);
     /* queue item has sole ownership of the querybuf */
-    gwbuf_free(queue_item->query_buf);
+    if (queue_item->query_buf)
+        gwbuf_free(queue_item->query_buf);
     /* clear the embedded POOL_QUEUE_ITEM */
     queue_item->query_buf = queue_item->next = NULL;
 }

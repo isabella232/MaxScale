@@ -1600,6 +1600,17 @@ int i;
 	{
             gateway.service_health_check_user = strdup(value);
 	}
+	/* Airbnb server throttle server connection pool queue with a max depth */
+	if (strcmp(name, "server_connection_pool_throttle") == 0)
+	{
+	    char* endptr;
+	    int intval = strtol(value, &endptr, 0);
+	    gateway.server_connection_pool_throttle = 25;
+	    if(*endptr == '\0' && intval >= 0)
+	        gateway.server_connection_pool_throttle = intval;
+	    else
+	        skygw_log_write(LE, "Invalid value for 'server_connection_pool_throttle': %s", value);
+	}
 	else
 	{
 		for (i = 0; lognames[i].logname; i++)
@@ -1694,6 +1705,7 @@ global_defaults()
 
 	/* Airproxy connection pooling disabled by default */
 	gateway.server_connection_pools = 0;
+	gateway.server_connection_pool_throttle = 25;
 }
 
 /**
@@ -2698,4 +2710,13 @@ char*
 config_service_health_check_user()
 {
     return gateway.service_health_check_user;
+}
+
+/**
+ * Return the threshold of server connection pool queued requests for throttling
+ */
+int
+config_server_connection_pool_throttle()
+{
+    return gateway.server_connection_pool_throttle;
 }
