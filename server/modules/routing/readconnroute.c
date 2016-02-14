@@ -1246,7 +1246,7 @@ dequeue_server_connection_pool(ROUTER_CLIENT_SES *rses)
      * in risk of memory leak because housekeeper would crash attempting to
      * free embedded_thd in parsing_info_done. Scheduled rolling proxy restart
      * will take care of the rare memory leak. */
-    if (!DCB_IS_IN_HK_CLEANUP(rses->client_dcb) && queue_item->query_buf) {
+    if (!DCB_IS_IN_HK_CLEANUP(rses->rses_client_session->client) && queue_item->query_buf) {
         /* queue item has sole ownership of the querybuf */
         gwbuf_free(queue_item->query_buf);
     }

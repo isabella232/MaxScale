@@ -259,5 +259,6 @@ extern POOL_QUEUE_ITEM *server_dequeue_connection_pool_request(SERVER *server);
 extern void server_remove_connection_pool_request(SERVER *server, POOL_QUEUE_ITEM *item);
 void server_conn_pool_stats_minutely();
 void server_export_conn_pool_stats(DCB *dcb);
+bool server_check_availability();
 
 #endif

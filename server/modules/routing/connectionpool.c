@@ -358,6 +358,22 @@ void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp)
 }
 
 /**
+ * The housekeeper task checks server availability and takes action accordingly.
+ * In connection pooling mode, client sessions must be terminated explicitly
+ * because they may not be linked with any backend connection when server
+ * cleanup happened. The housekeeper tasks runs every 15-second and act fast
+ * to clean up client sessions.
+ */
+static void
+hktask_servers_status_check()
+{
+    /* if all backend servers become available, close all client sessions */
+    if (!server_check_availability()) {
+        dcb_close_all_clients();
+    }
+}
+
+/**
  * The housekeeper task collects minutely connection proxy internal stats for
  * router service and backend servers. It separates stats collection from stats
  * serving to external stats agent.
@@ -381,6 +397,7 @@ hktask_proxy_stats_minutely()
 void conn_proxy_stats_register_cb(SERVICE *service)
 {
     hktask_add("connection_proxy_stats", hktask_proxy_stats_minutely, NULL, 60);
+    hktask_add("connection_proxy_server_check", hktask_servers_status_check, NULL, 15);
 }
 
 void
@@ -428,6 +445,8 @@ conn_proxy_export_stats_cb(struct dcb *dcb)
                curr->n_client_hangups - last->n_client_hangups);
     dcb_printf(dcb, "  \"client_errors\": %d,\n",
                curr->n_client_errors - last->n_client_errors);
+    dcb_printf(dcb, "  \"client_full_cleanups\": %d,\n",
+               curr->n_client_full_cleanups - last->n_client_full_cleanups);
     dcb_printf(dcb, "  \"client_sessions\": %d,\n", curr->n_client_sessions);
     dcb_printf(dcb, "  \"event_queue_length\": %d,\n", curr->poll_events_queue_len);
     dcb_printf(dcb, "  \"event_queue_length_max\": %d \n", last->poll_events_queue_max);

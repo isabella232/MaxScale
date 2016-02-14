@@ -102,6 +102,7 @@ struct service_conn_pool_stats {
     int n_client_disconnections;   /* number of client connection close events */
     int n_client_hangups;          /* number of client hangup events */
     int n_client_errors;           /* number of client error events */
+    int n_client_full_cleanups;    /* number of full client sessions cleanup */
 };
 typedef struct service_conn_pool_stats SERVICE_CONN_POOL_STATS;
 
@@ -117,6 +118,7 @@ struct service_conn_pool_minutely_stats {
     int n_disconn_reqs;            /* number of client disconnection requests */
     int n_client_hangups;          /* number of client connection hangup events */
     int n_client_errors;           /* number of client connection error events */
+    int n_client_full_cleanups;    /* number of full client sessions cleanup */
     int n_client_sessions;         /* number of current client sessions */
     my_uint64 queries_exec_time;   /* sum of all queries execution time within the period */
     my_uint64 query_max_exec_time; /* max query execution time within the period */
@@ -268,6 +270,7 @@ void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp);
    stats->n_client_disconnections = 0;                         \
    stats->n_client_hangups = 0;                                \
    stats->n_client_errors = 0;                                 \
+   stats->n_client_full_cleanups = 0;                          \
  }
 
 

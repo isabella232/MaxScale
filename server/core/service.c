@@ -2125,6 +2125,7 @@ void service_conn_pool_stats_minutely(service_conn_pool_minutely_stats *stats)
     stats->n_client_hangups = service->conn_pool_stats.n_client_hangups;
     stats->n_client_errors = service->conn_pool_stats.n_client_errors;
     stats->n_client_sessions = service->conn_pool_stats.n_client_sessions;
+    stats->n_client_full_cleanups = service->conn_pool_stats.n_client_full_cleanups;
 }
 
 void service_export_conn_proxy_stats(DCB *dcb)
