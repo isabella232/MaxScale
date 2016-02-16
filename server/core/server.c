@@ -572,6 +572,8 @@ SERVER_PARAM	*param;
                       server->conn_pool.pool_stats.n_conns_backend_errors);
            dcb_printf(dcb, "\t\tParked connections errors:  %d\n",
                       server->conn_pool.pool_stats.n_parked_conns_errors);
+           dcb_printf(dcb, "\t\tThrottled clients queued requests:  %d\n",
+                      server->conn_pool.pool_stats.n_throttled_queue_reqs);
            dcb_printf(dcb, "\t\tQuery routing errors:  %d\n",
                       server->conn_pool.pool_stats.n_query_routing_errors);
            dcb_printf(dcb, "\t\tBackend connections closed by client errors:  %d\n",
@@ -1089,6 +1091,8 @@ server_export_conn_pool_stats(DCB *dcb)
                        curr->n_conns_backend_errors - last->n_conns_backend_errors);
             dcb_printf(dcb, " \"server.parked_conns_errors\": %d,\n",
                        curr->n_parked_conns_errors - last->n_parked_conns_errors);
+            dcb_printf(dcb, " \"server.throttled_clients_queue_reqs\": %d,\n",
+                       curr->n_throttled_queue_reqs - last->n_throttled_queue_reqs);
             dcb_printf(dcb, " \"server.query_routing_errors\": %d,\n",
                        curr->n_query_routing_errors - last->n_query_routing_errors);
             /* minutely resultset processing stats */
