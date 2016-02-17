@@ -386,6 +386,7 @@ int dcb_drain_writeq_SSL(DCB *dcb);
  */
 #define DCB_CONN_POOL_IN_AUTH_PHASE 0x0001  /**<< is in authentication phase */
 #define DCB_CONN_POOL_IN_POOL       0x0002  /**<< is member of server connection pool */
+#define DCB_CONN_POOL_HK_CLEANUP    0x0004  /**<< client DCB in cleanup by housekeeper */
 
 #define DCB_SET_IN_AUTH_PHASE(dcb) { dcb->dcb_conn_pool_data.state |= DCB_CONN_POOL_IN_AUTH_PHASE; }
 #define DCB_CLR_IN_AUTH_PHASE(dcb) { dcb->dcb_conn_pool_data.state &= ~DCB_CONN_POOL_IN_AUTH_PHASE; }
@@ -394,6 +395,9 @@ int dcb_drain_writeq_SSL(DCB *dcb);
 #define DCB_SET_IN_CONN_POOL(dcb) { dcb->dcb_conn_pool_data.state |= DCB_CONN_POOL_IN_POOL; }
 #define DCB_CLR_IN_CONN_POOL(dcb) { dcb->dcb_conn_pool_data.state &= ~DCB_CONN_POOL_IN_POOL; }
 #define DCB_IS_IN_CONN_POOL(dcb)  (dcb->dcb_conn_pool_data.state & DCB_CONN_POOL_IN_POOL)
+
+#define DCB_SET_IN_HK_CLEANUP(dcb) { dcb->dcb_conn_pool_data.state |= DCB_CONN_POOL_HK_CLEANUP; }
+#define DCB_IS_IN_HK_CLEANUP(dcb)  (dcb->dcb_conn_pool_data.state & DCB_CONN_POOL_HK_CLEANUP)
 
 #define DCB_GET_ROUTER_SESSION(dcb) (dcb->dcb_conn_pool_data.rses_ref)
 #define DCB_GET_BREF_INDEX(dcb) (dcb->dcb_conn_pool_data.rses_bref_index)
@@ -404,5 +408,6 @@ int dcb_drain_writeq_SSL(DCB *dcb);
 
 void dcb_add_server_persistent_connection_fast(DCB*);
 bool dcb_park_server_connection_pool(DCB*);
+void dcb_close_all_clients();
 
 #endif /*  _DCB_H */

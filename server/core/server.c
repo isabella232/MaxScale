@@ -1107,3 +1107,22 @@ server_export_conn_pool_stats(DCB *dcb)
     }
     spinlock_release(&server_spin);
 }
+
+/**
+ * A housekeeper task helper function that checks whether any backend servers have become
+ * unavailable. It returns TRUE if some servers are available, and FALSE if none available.
+ */
+bool
+server_check_availability()
+{
+    int n_servers = 0;
+    int not_avail = 0;
+    SERVER *server;
+    spinlock_acquire(&server_spin);
+    for (server = allServers; server != NULL; server = server->next, n_servers++) {
+        if (!SERVER_IS_RUNNING(server))
+            not_avail += 1;
+    }
+    spinlock_release(&server_spin);
+    return not_avail != n_servers;
+}

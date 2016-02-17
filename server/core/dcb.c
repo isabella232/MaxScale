@@ -3291,3 +3291,28 @@ bool dcb_park_server_connection_pool(DCB *dcb)
     }
     return ret;
 }
+
+/**
+ * This callback is to close all client sessions when no backend servers are
+ * available.
+ */
+void dcb_close_all_clients()
+{
+    DCB *dcb;
+    for (dcb = dcb_get_next(NULL); dcb != NULL; dcb = dcb_get_next(dcb)) {
+        if (dcb_isclient(dcb)) {
+            /* mark housekeep cleanup such that queued request gwbuf_free would
+             * skip, and this is because housekeeper could not free embedded_thd
+             * in parsing_info_done */
+            DCB_SET_IN_HK_CLEANUP(dcb)
+            if (dcb->session != NULL)
+                atomic_add(&dcb->service->conn_pool_stats.n_client_full_cleanups, 1);
+            dcb_close(dcb);
+            LOGIF(LE, (skygw_log_write_flush(
+                         LOGFILE_ERROR,
+                         "%lu [dcb_close_all_clients] Close client DCB %p "
+                         "client sessions full cleanup.",
+                         pthread_self(), dcb)));
+        }
+    }
+}
