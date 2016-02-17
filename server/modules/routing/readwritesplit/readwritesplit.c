@@ -985,7 +985,12 @@ static void* newSession(
 	}
 
         router->stats.n_sessions      += 1;
-        
+
+        /* Airproxy maintains service connection pool stats */
+        if (router->service != NULL) {
+            atomic_add(&router->service->conn_pool_stats.n_client_sessions, 1);
+        }
+
         /**
          * Version is bigger than zero once initialized.
          */
@@ -1097,6 +1102,11 @@ static void closeSession(
                 /* Airproxy clean up server connection pool queue request */
                 if (router_cli_ses->rses_bref_queued != NULL) {
                     dequeue_server_connection_pool(router_cli_ses);
+                }
+
+                /* Airproxy maintains service connection pool stats */
+                if (router_cli_ses->router->service != NULL) {
+                    atomic_add(&router_cli_ses->router->service->conn_pool_stats.n_client_sessions, -1);
                 }
 
                 /** Unlock */

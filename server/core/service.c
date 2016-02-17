@@ -2120,7 +2120,7 @@ void service_conn_pool_stats_minutely(service_conn_pool_minutely_stats *stats)
     }
 
     /* collect service level stats */
-    stats->n_conn_reqs = service->conn_pool_stats.n_conn_accepts;
+    stats->n_conn_accepts = service->conn_pool_stats.n_conn_accepts;
     stats->n_disconn_reqs = service->conn_pool_stats.n_client_disconnections;
     stats->n_client_hangups = service->conn_pool_stats.n_client_hangups;
     stats->n_client_errors = service->conn_pool_stats.n_client_errors;
