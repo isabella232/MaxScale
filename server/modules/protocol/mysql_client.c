@@ -1696,11 +1696,6 @@ int gw_MySQLAccept(DCB *listener)
                 client_dcb->service = listener->session->service;
                 client_dcb->fd = c_sock;
 
-                /* Airproxy maintains service connection pool stats */
-                if (listener->session->service != NULL) {
-                    listener->session->service->conn_pool_stats.n_client_sessions++;
-                }
-
 		// get client address
 		if ( client_conn.sa_family == AF_UNIX) 
                 {

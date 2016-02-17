@@ -114,7 +114,7 @@ struct service_conn_pool_minutely_stats {
     int n_queries_routed;          /* number of queries routed by the service */
     int n_queries_master;          /* number of queries routed to master backend */
     int n_queries_slave;           /* number of queries routed to slave backends */
-    int n_conn_reqs;               /* number of client connection requests */
+    int n_conn_accepts;            /* number of client connection requests */
     int n_disconn_reqs;            /* number of client disconnection requests */
     int n_client_hangups;          /* number of client connection hangup events */
     int n_client_errors;           /* number of client connection error events */

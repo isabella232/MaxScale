@@ -612,6 +612,11 @@ BACKEND *master_host = NULL;
 	/* set up backend connection DCB with pooling callback functors */
 	init_connection_pool_dcb(client_rses->backend_dcb, client_rses, inst);
 
+        /* Airproxy maintains service connection pool stats */
+        if (inst->service != NULL) {
+            atomic_add(&inst->service->conn_pool_stats.n_client_sessions, 1);
+        }
+
 	/**
          * Add this session to the list of active sessions.
          */
@@ -718,6 +723,12 @@ DCB*              backend_dcb;
                 /* Airproxy clean up server connection pool queue request */
                 if (router_cli_ses->rses_queue_item.query_buf != NULL) {
                     dequeue_server_connection_pool(router_cli_ses);
+                }
+                /* Airproxy maintains service connection pool stats */
+                if (router_cli_ses->rses_router != NULL &&
+                    router_cli_ses->rses_router->service != NULL)
+                {
+                    atomic_add(&router_cli_ses->rses_router->service->conn_pool_stats.n_client_sessions, -1);
                 }
                 /** Unlock */
                 rses_end_locked_router_action(router_cli_ses);
