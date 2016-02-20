@@ -114,6 +114,7 @@ typedef struct {
         char                   *server_connection_pool_user; /**< Airproxy restricted user */
         char                   *service_health_check_user; /**< Airproxy service health check user */
         int                     server_connection_pool_throttle; /**< Airproxy connection pool queue max */
+        int server_connection_pool_idle_timeout_min; /**< Airproxy connection pool idle minute */
 } GATEWAY_CONF;
 
 extern int		config_load(char *);

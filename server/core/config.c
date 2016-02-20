@@ -863,8 +863,9 @@ process_config_context(CONFIG_CONTEXT *context)
 			        server->conn_pool.conn_pool_size = strtol(config_get_value_string(obj->parameters, "connection_pool_size"), NULL, 0);
 			        if (server->conn_pool.conn_pool_size > 0) {
 			            server->persistpoolmax = MAX(server->conn_pool.conn_pool_size, server->persistpoolmax);
-			            /* ensure pooling connections have large timeout */
-			            server->persistmaxtime = MAX(86400, server->persistmaxtime);
+			            /* ensure pooling connections have idle timeout */
+			            server->persistmaxtime =
+                                      gateway.server_connection_pool_idle_timeout_min * 60;
 			            /* mark proxy server have server connection pooling enabled */
 			            gateway.server_connection_pools = 1;
 			        }
@@ -1611,6 +1612,18 @@ int i;
 	    else
 	        skygw_log_write(LE, "Invalid value for 'server_connection_pool_throttle': %s", value);
 	}
+        /* Airbnb server server connection pool idle connection timeout for recycle */
+	if (strcmp(name, "server_connection_pool_idle_timeout_min") == 0)
+	{
+	    char* endptr;
+	    int intval = strtol(value, &endptr, 0);
+	    gateway.server_connection_pool_idle_timeout_min = 240; /* default 4 hours */
+	    if(*endptr == '\0' && intval >= 0)
+	        gateway.server_connection_pool_idle_timeout_min = intval;
+	    else
+	        skygw_log_write(LE, "Invalid value for 'server_connection_pool_idle_timeout_min': %s",
+                                value);
+	}
 	else
 	{
 		for (i = 0; lognames[i].logname; i++)
@@ -1706,6 +1719,7 @@ global_defaults()
 	/* Airproxy connection pooling disabled by default */
 	gateway.server_connection_pools = 0;
 	gateway.server_connection_pool_throttle = 25;
+	gateway.server_connection_pool_idle_timeout_min = 240; /* default 4 hours */
 }
 
 /**
@@ -2050,8 +2064,9 @@ SERVER			*server;
 			        server->conn_pool.conn_pool_size = pool_size;
 			        if (server->conn_pool.conn_pool_size > 0) {
 			            server->persistpoolmax = MAX(server->conn_pool.conn_pool_size, server->persistpoolmax);
-			            /* ensure pooling connections have large timeout */
-			            server->persistmaxtime = MAX(86400, server->persistmaxtime);
+			            /* ensure pooling connections have idle timeout */
+			            server->persistmaxtime =
+                                      gateway.server_connection_pool_idle_timeout_min * 60;
 			            /* mark proxy server have server connection pooling enabled */
 			            gateway.server_connection_pools = 1;
 			        }

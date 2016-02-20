@@ -73,6 +73,7 @@ struct server_conn_pool_stats {
     int n_fast_resultset_proc;     /* number of optimized resultset processing */
     int n_normal_resultset_proc;   /* number of complete resultset processing */
     int n_throttled_queue_reqs;    /* number of throttled client requests */
+    int n_recycled_pool_conns;     /* number of recycled pooling connections */
 };
 typedef struct server_conn_pool_stats SERVER_CONN_POOL_STATS;
 
@@ -89,6 +90,7 @@ struct server_conn_pool_minutely_stats {
     int n_throttled_queue_reqs;    /* number of throttled client requests */
     int n_fast_resultset_proc;     /* number of optimized resultset processing */
     int n_normal_resultset_proc;   /* number of complete resultset processing */
+    int n_recycled_pool_conns;     /* number of recycled pooling connections */
 };
 typedef struct server_conn_pool_minutely_stats SERVER_CONN_POOL_MINUTELY_STATS;
 
@@ -244,6 +246,7 @@ void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp);
     server->conn_pool.pool_stats.n_fast_resultset_proc = 0;  \
     server->conn_pool.pool_stats.n_normal_resultset_proc = 0; \
     server->conn_pool.pool_stats.n_throttled_queue_reqs = 0; \
+    server->conn_pool.pool_stats.n_recycled_pool_conns = 0; \
   }
 
 /** Maintain minutely server level connection pool stats holder */
@@ -257,6 +260,7 @@ void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp);
     last->n_fast_resultset_proc = server->conn_pool.pool_stats.n_fast_resultset_proc; \
     last->n_normal_resultset_proc = server->conn_pool.pool_stats.n_normal_resultset_proc; \
     last->n_conns_close_by_client_error = server->conn_pool.pool_stats.n_conns_close_by_client_error; \
+    last->n_recycled_pool_conns = server->conn_pool.pool_stats.n_recycled_pool_conns; \
     /* reset minutely counter stats */                                  \
     server->conn_pool.pool_stats.n_fast_resultset_proc = 0;             \
     server->conn_pool.pool_stats.n_normal_resultset_proc = 0;           \
