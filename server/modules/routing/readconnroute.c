@@ -615,6 +615,7 @@ BACKEND *master_host = NULL;
         /* Airproxy maintains service connection pool stats */
         if (inst->service != NULL) {
             atomic_add(&inst->service->conn_pool_stats.n_client_sessions, 1);
+            atomic_add(&inst->service->conn_pool_stats.n_new_sessions_minutely, 1);
         }
 
 	/**
