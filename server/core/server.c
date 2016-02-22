@@ -572,6 +572,8 @@ SERVER_PARAM	*param;
                       server->conn_pool.pool_stats.n_conns_backend_errors);
            dcb_printf(dcb, "\t\tParked connections errors:  %d\n",
                       server->conn_pool.pool_stats.n_parked_conns_errors);
+           dcb_printf(dcb, "\t\tRecycled backend connections:  %d\n",
+                      server->conn_pool.pool_stats.n_recycled_pool_conns);
            dcb_printf(dcb, "\t\tThrottled clients queued requests:  %d\n",
                       server->conn_pool.pool_stats.n_throttled_queue_reqs);
            dcb_printf(dcb, "\t\tQuery routing errors:  %d\n",
@@ -1095,6 +1097,8 @@ server_export_conn_pool_stats(DCB *dcb)
                        curr->n_throttled_queue_reqs - last->n_throttled_queue_reqs);
             dcb_printf(dcb, " \"server.query_routing_errors\": %d,\n",
                        curr->n_query_routing_errors - last->n_query_routing_errors);
+            dcb_printf(dcb, " \"server.recycled_pool_conns\": %d,\n",
+                       curr->n_recycled_pool_conns - last->n_recycled_pool_conns);
             /* minutely resultset processing stats */
             dcb_printf(dcb, " \"server.fast_resultset_processing\": %d,\n",
                        last->n_fast_resultset_proc);
@@ -1125,4 +1129,21 @@ server_check_availability()
     }
     spinlock_release(&server_spin);
     return not_avail != n_servers;
+}
+
+/**
+ * A housekeeper task helper function that recycles backend connections in the pool. An idle
+ * connection or a connection that had error event handled will be recycled.
+ */
+void
+server_recycle_connection_pool()
+{
+    SERVER *server;
+    spinlock_acquire(&server_spin);
+    for (server = allServers; server != NULL; server = server->next) {
+        if (server->persistent) {
+            dcb_persistent_clean_count(server->persistent, false);
+        }
+    }
+    spinlock_release(&server_spin);
 }

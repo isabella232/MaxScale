@@ -374,6 +374,16 @@ hktask_servers_status_check()
 }
 
 /**
+ * The housekeeper task recycles idle connections and connections that had error
+ * event in the server connection pool.
+ */
+static void
+hktask_servers_connection_pool_recycle()
+{
+    server_recycle_connection_pool();
+}
+
+/**
  * The housekeeper task collects minutely connection proxy internal stats for
  * router service and backend servers. It separates stats collection from stats
  * serving to external stats agent.
@@ -398,6 +408,8 @@ void conn_proxy_stats_register_cb(SERVICE *service)
 {
     hktask_add("connection_proxy_stats", hktask_proxy_stats_minutely, NULL, 60);
     hktask_add("connection_proxy_server_check", hktask_servers_status_check, NULL, 15);
+    hktask_add("connection_proxy_server_recycle", hktask_servers_connection_pool_recycle,
+               NULL, 300);
 }
 
 void

@@ -2799,12 +2799,17 @@ dcb_persistent_clean_count(DCB *dcb, bool cleanall)
         spinlock_acquire(&server->persistlock);
         persistentdcb = server->persistent;
         while (persistentdcb) {
+            /* Airproxy keep at least 2/3 of server connection pool size even if there
+             * are idle connections in the pool */
+            bool check_idle = !config_connection_pool_enabled() ||
+              server->conn_pool.pool_stats.n_pool_conns > (server->persistpoolmax*2/3);
             CHK_DCB(persistentdcb);
             nextdcb = persistentdcb->nextpersistent;
             if (cleanall 
 		|| persistentdcb-> dcb_errhandle_called 
 		|| count >= server->persistpoolmax 
-		|| (time(NULL) - persistentdcb->persistentstart) > server->persistmaxtime)
+		|| (check_idle &&
+                    (time(NULL) - persistentdcb->persistentstart) > server->persistmaxtime))
             {
 		LOGIF(LD, (skygw_log_write(
                     LOGFILE_DEBUG,
@@ -2826,6 +2831,14 @@ dcb_persistent_clean_count(DCB *dcb, bool cleanall)
                 persistentdcb->nextpersistent = disposals;
                 disposals = persistentdcb;
                 atomic_add(&server->stats.n_persistent, -1);
+                /* Airproxy adjusts server connection pool stat and DCB pooling state */
+                if (DCB_IS_IN_CONN_POOL(persistentdcb)) {
+                    atomic_add(&server->conn_pool.pool_stats.n_pool_conns, -1);
+                    if (DCB_IS_PARKED_IN_POOL(persistentdcb))
+                        atomic_add(&server->conn_pool.pool_stats.n_parked_conns, -1);
+                    DCB_CLR_IN_CONN_POOL(persistentdcb);
+                    atomic_add(&server->conn_pool.pool_stats.n_recycled_pool_conns, 1);
+                }
             }
             else 
             {

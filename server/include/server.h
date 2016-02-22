@@ -260,5 +260,6 @@ extern void server_remove_connection_pool_request(SERVER *server, POOL_QUEUE_ITE
 void server_conn_pool_stats_minutely();
 void server_export_conn_pool_stats(DCB *dcb);
 bool server_check_availability();
+void server_recycle_connection_pool();
 
 #endif
