@@ -105,6 +105,7 @@ struct service_conn_pool_stats {
     int n_client_hangups;          /* number of client hangup events */
     int n_client_errors;           /* number of client error events */
     int n_client_full_cleanups;    /* number of full client sessions cleanup */
+    int n_new_sessions_minutely;   /* number of new client sessions within minute */
 };
 typedef struct service_conn_pool_stats SERVICE_CONN_POOL_STATS;
 
@@ -122,6 +123,7 @@ struct service_conn_pool_minutely_stats {
     int n_client_errors;           /* number of client connection error events */
     int n_client_full_cleanups;    /* number of full client sessions cleanup */
     int n_client_sessions;         /* number of current client sessions */
+    int n_new_sessions;            /* number of new client sessions */
     my_uint64 queries_exec_time;   /* sum of all queries execution time within the period */
     my_uint64 query_max_exec_time; /* max query execution time within the period */
     my_uint64 query_min_exec_time; /* min query execution time within the period */
@@ -275,7 +277,15 @@ void track_query_resultset_stats(CONN_POOL_QUERY_RESPONSE *resp);
    stats->n_client_hangups = 0;                                \
    stats->n_client_errors = 0;                                 \
    stats->n_client_full_cleanups = 0;                          \
+   stats->n_new_sessions_minutely = 0;                         \
  }
+
+
+/** Reset service level minutely connection pool stats */
+#define service_reset_minutely_conn_pool_stats(service) \
+  { SERVICE_CONN_POOL_STATS *stats = &service->conn_pool_stats; \
+    stats->n_new_sessions_minutely = 0;                         \
+  }
 
 
 /** Initialize router session connection pool state data */
