@@ -862,7 +862,7 @@ process_config_context(CONFIG_CONTEXT *context)
 			        /* server connection pool size */
 			        server->conn_pool.conn_pool_size = strtol(config_get_value_string(obj->parameters, "connection_pool_size"), NULL, 0);
 			        if (server->conn_pool.conn_pool_size > 0) {
-			            server->persistpoolmax = MAX(server->conn_pool.conn_pool_size, server->persistpoolmax);
+			            server->persistpoolmax = server->conn_pool.conn_pool_size;
 			            /* ensure pooling connections have idle timeout */
 			            server->persistmaxtime =
                                       gateway.server_connection_pool_idle_timeout_min * 60;
@@ -2060,10 +2060,12 @@ SERVER			*server;
 			                "Error : Server '%s' connection pool size cannot be "
 			                "changed to zero. ",
 			                obj->object)));
+			        } else if (pool_size > 0) {
+			            server->conn_pool.conn_pool_size = pool_size;
 			        }
-			        server->conn_pool.conn_pool_size = pool_size;
 			        if (server->conn_pool.conn_pool_size > 0) {
-			            server->persistpoolmax = MAX(server->conn_pool.conn_pool_size, server->persistpoolmax);
+			            /* use connection pool size at config reload time */
+			            server->persistpoolmax = server->conn_pool.conn_pool_size;
 			            /* ensure pooling connections have idle timeout */
 			            server->persistmaxtime =
                                       gateway.server_connection_pool_idle_timeout_min * 60;
