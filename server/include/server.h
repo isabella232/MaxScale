@@ -84,6 +84,7 @@ typedef struct {
                                                sessions waiting for backend connection  */
         POOL_QUEUE_ITEM *conn_queue_tail;
         SPINLOCK         conn_queue_lock; /**< Connection pool queue lock */
+        volatile int     in_config_reload; /**< Server reload pool size config */
 } SERVER_CONN_POOL;
 
 /**
@@ -234,10 +235,6 @@ extern RESULTSET	*serverGetList();
 /** Airproxy connection pool queue */
 
 #define SERVER_CONN_POOL_ENABLED(server) (server->conn_pool.conn_pool_size > 0)
-
-/* server connection pool is fully bootstrapped */
-#define SERVER_CONN_POOL_FULL(server) \
-  (server->conn_pool.pool_stats.n_pool_conns == server->persistpoolmax)
 
 #define SERVER_CONN_POOL_QUEUE_EMPTY(server) (server->conn_pool.conn_queue_head == NULL)
 

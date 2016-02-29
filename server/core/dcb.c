@@ -1812,6 +1812,18 @@ dcb_maybe_add_persistent(DCB *dcb)
     char *user;
     int  poolcount = -1;
     bool conn_pool_dcb_ok = true;
+    long server_persist_max = dcb->server ? dcb->server->persistpoolmax : 0;
+
+    /* When connection pool size config reload happens, server->persistpoolmax may
+     * change when some backend connections trying to enter the pool. To ensure
+     * consistently reading the same value, must acquire lock if knowing server
+     * is reloading connection pool size config. */
+    if (dcb->server && dcb->server->conn_pool.in_config_reload != 0) {
+        spinlock_acquire(&dcb->server->persistlock);
+        server_persist_max = dcb->server->persistpoolmax;
+        spinlock_release(&dcb->server->persistlock);
+    }
+
     /* Airproxy does not park a backend connection for two cases,
      * 1, it is for authentication and pool is fully bootstrapped;
      * 2, its client session had error event or hangup event.
@@ -1827,7 +1839,9 @@ dcb_maybe_add_persistent(DCB *dcb)
         if (user != NULL && strcmp(user, config_server_connection_pool_user()) != 0) {
             conn_pool_dcb_ok = false;
         }
-        if (conn_pool_dcb_ok && DCB_IS_IN_AUTH_PHASE(dcb) && SERVER_CONN_POOL_FULL(dcb->server)) {
+        if (conn_pool_dcb_ok && DCB_IS_IN_AUTH_PHASE(dcb) && dcb->server &&
+            dcb->server->conn_pool.pool_stats.n_pool_conns >= server_persist_max)
+        {
             conn_pool_dcb_ok = false;
         }
         if (conn_pool_dcb_ok && DCB_IS_IN_CONN_POOL(dcb) && dcb->session->ses_error_hungup) {
@@ -1842,7 +1856,7 @@ dcb_maybe_add_persistent(DCB *dcb)
         && dcb->server->persistpoolmax 
         && !dcb->dcb_errhandle_called
         && !(dcb->flags & DCBF_HUNG)
-        && (poolcount = dcb_persistent_clean_count(dcb, false)) < dcb->server->persistpoolmax
+        && (poolcount = dcb_persistent_clean_count(dcb, false)) < server_persist_max
         && conn_pool_dcb_ok)
     {
         LOGIF(LD, (skygw_log_write(
