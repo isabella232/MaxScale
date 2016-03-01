@@ -1624,6 +1624,10 @@ int i;
 	        skygw_log_write(LE, "Invalid value for 'server_connection_pool_idle_timeout_min': %s",
                                 value);
 	}
+	else if (strcmp(name, "log_session_command_error") == 0)
+	{
+		gateway.log_session_command_error = config_truth_value((char*)value);
+	}
 	else
 	{
 		for (i = 0; lognames[i].logname; i++)
@@ -1720,6 +1724,7 @@ global_defaults()
 	gateway.server_connection_pools = 0;
 	gateway.server_connection_pool_throttle = 25;
 	gateway.server_connection_pool_idle_timeout_min = 240; /* default 4 hours */
+	gateway.log_session_command_error = false;
 }
 
 /**
@@ -2741,4 +2746,12 @@ int
 config_server_connection_pool_throttle()
 {
     return gateway.server_connection_pool_throttle;
+}
+
+/**
+ * Return global parameter whether to log session command rejection error message
+ */
+bool config_log_session_command_error()
+{
+    return gateway.log_session_command_error;
 }

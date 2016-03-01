@@ -115,6 +115,7 @@ typedef struct {
         char                   *service_health_check_user; /**< Airproxy service health check user */
         int                     server_connection_pool_throttle; /**< Airproxy connection pool queue max */
         int server_connection_pool_idle_timeout_min; /**< Airproxy connection pool idle minute */
+        bool log_session_command_error; /**< Airproxy log ignore session command error */
 } GATEWAY_CONF;
 
 extern int		config_load(char *);
@@ -162,4 +163,5 @@ bool config_connection_pool_enabled(void); /* Airproxy connection pool */
 char* config_server_connection_pool_user();
 char* config_service_health_check_user();
 int config_server_connection_pool_throttle();
+bool config_log_session_command_error();
 #endif

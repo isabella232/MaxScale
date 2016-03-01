@@ -2517,24 +2517,26 @@ static bool route_single_stmt(
 
 		/* Airproxy ignores session commands, if connection pooling enabled */
 		if (config_connection_pool_enabled()) {
-		    char* query_str = modutil_get_query(querybuf);
-		    char* qtype_str = skygw_get_qtype_str(qtype);
+                    if (config_log_session_command_error()) {
+		        char* query_str = modutil_get_query(querybuf);
+		        char* qtype_str = skygw_get_qtype_str(qtype);
 
-		    LOGIF(LE, (skygw_log_write_flush(
-			LOGFILE_ERROR,
-			"Error : connection proxy ignoring session command %s:%s: \"%s\" ",
-			STRPACKETTYPE(packet_type),
-			qtype_str,
-			(query_str == NULL ? "(empty)" : query_str))));
+		        LOGIF(LE, (skygw_log_write_flush(
+			    LOGFILE_ERROR,
+                            "Error : connection proxy ignoring session command %s:%s: \"%s\" ",
+                            STRPACKETTYPE(packet_type),
+                            qtype_str,
+                            (query_str == NULL ? "(empty)" : query_str))));
+		        if (query_str)
+		            free(query_str);
+		        if (qtype_str)
+		            free(qtype_str);
+                    }
+
 		    /* tell client module to send silent ok message to client */
 		    spinlock_acquire(&rses->client_dcb->session->ses_lock);
 		    rses->client_dcb->session->ses_ignore_sescmd = true;
 		    spinlock_release(&rses->client_dcb->session->ses_lock);
-
-		    if (query_str)
-		        free(query_str);
-		    if (qtype_str)
-		        free(qtype_str);
 		    goto retblock;
 		}
 
