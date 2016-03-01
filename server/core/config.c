@@ -2054,6 +2054,7 @@ SERVER			*server;
 			        SERVER *server = obj->element;
 			        /* server connection pool size should not be changed to zero */
 			        pool_size = strtol(config_get_value_string(obj->parameters, "connection_pool_size"), NULL, 0);
+			        spinlock_acquire(&server->persistlock);
 			        if (server->conn_pool.conn_pool_size > 0 && pool_size == 0) {
 			            LOGIF(LE, (skygw_log_write_flush(
 			                LOGFILE_ERROR,
@@ -2072,6 +2073,7 @@ SERVER			*server;
 			            /* mark proxy server have server connection pooling enabled */
 			            gateway.server_connection_pools = 1;
 			        }
+			        spinlock_release(&server->persistlock);
 			}
 		}
 		obj = obj->next;
