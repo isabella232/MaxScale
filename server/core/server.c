@@ -958,6 +958,7 @@ server_init_conn_pool(SERVER *server)
     server_init_conn_pool_stats(server);
     conn_pool->conn_pool_size = 0;
     conn_pool->conn_queue_head = conn_pool->conn_queue_tail = NULL;
+    conn_pool->in_config_reload = 0;
     spinlock_init(&conn_pool->conn_queue_lock);
 }
 
