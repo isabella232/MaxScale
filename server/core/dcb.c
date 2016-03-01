@@ -3294,11 +3294,14 @@ void dcb_add_server_persistent_connection_fast(DCB *dcb)
 }
 
 /**
- * Park a backend connection in the server persistent connections pool.
+ * Park a backend connection in the server persistent connections pool. When
+ * connection pool size is tuned down, a pool connection might be rejected
+ * for pooling. In that case, close the backend connection properly.
  */
 bool dcb_park_server_connection_pool(DCB *dcb)
 {
     bool ret;
+    bool was_pool_conn = DCB_IS_IN_CONN_POOL(dcb);
     ss_dassert(dcb != NULL && dcb->server != NULL && dcb->user == NULL);
     ret = dcb_maybe_add_persistent(dcb);
     if (ret) {
@@ -3306,8 +3309,11 @@ bool dcb_park_server_connection_pool(DCB *dcb)
             LOGFILE_DEBUG,
             "%lu [dcb_park_server_connection_pool] park DCB %p in server %p pool",
             pthread_self(), dcb, dcb->server)));
-    } else if (DCB_IS_IN_AUTH_PHASE(dcb)) {
-        /* close temp backend connection used for client auth */
+    } else if (DCB_IS_IN_AUTH_PHASE(dcb) ||
+               (was_pool_conn && !DCB_IS_IN_CONN_POOL(dcb)))
+    {
+        /* close temp backend connection used for client auth, or connection
+         * that is rejected for pooling due to pool size change */
         dcb->conn_pool_func->pool_auth_cb(dcb);
     }
     return ret;
