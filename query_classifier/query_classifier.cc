@@ -1683,3 +1683,48 @@ skygw_query_op_t query_classifier_get_operation(GWBUF* querybuf)
   }
 	return operation;
 }
+
+static bool is_malformed_delete(Item_cond *where)
+{
+  if (where->functype() == Item_func::EQ_FUNC) {
+    Item_func_eq *eq_func = (Item_func_eq*) where;
+    Item **args = eq_func->arguments();
+    Item *lhs = args[0];
+    Item *rhs = args[1];
+    /* prohibit delete with always true predicate such as "where 0 = 0" */
+    if (lhs->type() == Item::INT_ITEM && rhs->type() == Item::INT_ITEM) {
+      Item_int *lhs_val = (Item_int*)lhs;
+      Item_int *rhs_val = (Item_int*)rhs;
+      if (lhs->val_int() == rhs->val_int()) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+bool query_classifier_check_malformed_query(GWBUF* querybuf)
+{
+  LEX* lex;
+
+  if(!query_is_parsed(querybuf)){
+    parse_query(querybuf);
+  }
+
+  if((lex = get_lex(querybuf)) == NULL || lex->sql_command != SQLCOM_DELETE) {
+    return false;
+  }
+
+  for (SELECT_LEX *clex = lex->all_selects_list; clex != NULL;
+       clex = clex->next_select_in_list())
+  {
+    if (clex->where) {
+      if (is_malformed_delete((Item_cond*)clex->where))
+        return true;
+    }
+  }
+
+  return false;
+}
+

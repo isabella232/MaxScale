@@ -85,6 +85,7 @@ extern char* create_auth_fail_str(char *username, char *hostaddr, char *sha1, ch
 int do_ssl_accept(MySQLProtocol* protocol);
 
 static void conn_proxy_disallow_sescmds(SESSION *session);
+static void conn_proxy_reject_malformed_query(SESSION *session);
 
 /*
  * The "module object" for the mysqld client protocol module.
@@ -2008,6 +2009,10 @@ static int route_by_statement(
 		        if (config_connection_pool_enabled() && session->ses_ignore_sescmd) {
 			    conn_proxy_disallow_sescmds(session);
 		        }
+			/* Airproxy rejects malformed query (e.g. where 0 = 0) */
+		        if (config_connection_pool_enabled() && session->ses_reject_bad_query) {
+			    conn_proxy_reject_malformed_query(session);
+		        }
                 }
                 else
                 {
@@ -2108,5 +2113,16 @@ static void conn_proxy_disallow_sescmds(SESSION *session)
     }
     spinlock_acquire(&session->ses_lock);
     session->ses_ignore_sescmd = false;
+    spinlock_release(&session->ses_lock);
+}
+
+static void conn_proxy_reject_malformed_query(SESSION *session)
+{
+    if (session->client->state == DCB_STATE_POLLING) {
+        mysql_send_custom_error(session->client, 1, 0,
+                                "Airbnb Maxscale database proxy detects malformed query.");
+    }
+    spinlock_acquire(&session->ses_lock);
+    session->ses_reject_bad_query = false;
     spinlock_release(&session->ses_lock);
 }

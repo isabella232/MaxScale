@@ -2261,6 +2261,7 @@ static bool route_single_stmt(
 	bool           	   succp          = false;
 	int                rlag_max       = MAX_RLAG_UNDEFINED;
 	backend_type_t     btype; /*< target backend type */
+        bool               malformed_delete = false; /* Airbnb Ruby SB check */
 
 	ss_dassert(querybuf->next == NULL); // The buffer must be contiguous.
 	ss_dassert(!GWBUF_IS_TYPE_UNDEFINED(querybuf));
@@ -2322,6 +2323,7 @@ static bool route_single_stmt(
 			
 		case MYSQL_COM_QUERY:
 			qtype = query_classifier_get_type(querybuf);
+			malformed_delete = query_classifier_check_malformed_query(querybuf);
 			break;
 			
 		case MYSQL_COM_STMT_PREPARE:
@@ -2345,7 +2347,15 @@ static bool route_single_stmt(
 		default:
 			break;
 	} /**< switch by packet type */
-	
+
+	/* Airproxy detects malformed delete query */
+	if (malformed_delete) {
+	    spinlock_acquire(&rses->client_dcb->session->ses_lock);
+	    rses->client_dcb->session->ses_reject_bad_query = true;
+	    spinlock_release(&rses->client_dcb->session->ses_lock);
+	    goto retblock;
+	}
+
 	/**
 	 * Check if the query has anything to do with temporary tables.
 	 */

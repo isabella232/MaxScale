@@ -138,6 +138,7 @@ typedef struct session {
 	bool            ses_is_child;	  /*< this is a child session */
 	bool            ses_ignore_sescmd; /*< Airproxy ignore session command */
 	bool            ses_error_hungup;  /*< Airproxy client error event or hangup event */
+	bool            ses_reject_bad_query; /*< Airproxy reject bad malformed query by Rails */
 #if defined(SS_DEBUG)
         skygw_chk_t     ses_chk_tail;
 #endif
