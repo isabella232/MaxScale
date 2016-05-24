@@ -1684,14 +1684,14 @@ skygw_query_op_t query_classifier_get_operation(GWBUF* querybuf)
 	return operation;
 }
 
-static bool is_malformed_delete(Item_cond *where)
+static bool is_always_true_eq_condition(Item_cond *where)
 {
   if (where->functype() == Item_func::EQ_FUNC) {
     Item_func_eq *eq_func = (Item_func_eq*) where;
     Item **args = eq_func->arguments();
     Item *lhs = args[0];
     Item *rhs = args[1];
-    /* prohibit delete with always true predicate such as "where 0 = 0" */
+    /* prohibit query with always true predicate such as "where 0 = 0" */
     if (lhs->type() == Item::INT_ITEM && rhs->type() == Item::INT_ITEM) {
       Item_int *lhs_val = (Item_int*)lhs;
       Item_int *rhs_val = (Item_int*)rhs;
@@ -1704,23 +1704,38 @@ static bool is_malformed_delete(Item_cond *where)
   return false;
 }
 
-bool query_classifier_check_malformed_query(GWBUF* querybuf)
+/**
+ * This helper method checks for queries that we want to proactively reject such
+ * that we can fence off syntatically valid mutation query that may result in
+ * unintentional disastrous consequence in our core databases.
+ *
+ * The following is a list of queries that we look for an flatly reject.
+ *
+ * - Truncate table
+ * - Delete/Update with single malformed condition such as "where 0 = 0"
+ */
+bool query_classifier_check_blacklist_query(GWBUF* querybuf)
 {
   LEX* lex;
 
-  if(!query_is_parsed(querybuf)){
+  if (!query_is_parsed(querybuf))
     parse_query(querybuf);
-  }
 
-  if((lex = get_lex(querybuf)) == NULL || lex->sql_command != SQLCOM_DELETE) {
+  if ((lex = get_lex(querybuf)) == NULL)
     return false;
-  }
+
+  if (lex->sql_command == SQLCOM_TRUNCATE)
+    return true;
+
+  if (lex->sql_command != SQLCOM_DELETE || lex->sql_command != SQLCOM_UPDATE)
+    return false;
 
   for (SELECT_LEX *clex = lex->all_selects_list; clex != NULL;
        clex = clex->next_select_in_list())
   {
     if (clex->where) {
-      if (is_malformed_delete((Item_cond*)clex->where))
+      /* check single equal condition that evaluates always true */
+      if (is_always_true_eq_condition((Item_cond*)clex->where))
         return true;
     }
   }
