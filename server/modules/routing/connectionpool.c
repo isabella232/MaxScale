@@ -449,6 +449,8 @@ conn_proxy_export_stats_cb(struct dcb *dcb)
                curr->n_queries_master - last->n_queries_master);
     dcb_printf(dcb, "  \"queries_to_slaves\": %d,\n",
                curr->n_queries_slave - last->n_queries_slave);
+    dcb_printf(dcb, "  \"queries_rejected\": %d,\n",
+               curr->n_rejected_queries - last->n_rejected_queries);
     dcb_printf(dcb, "  \"connection_reqs\": %d,\n",
                curr->n_conn_accepts - last->n_conn_accepts);
     dcb_printf(dcb, "  \"disconnection_reqs\": %d,\n",

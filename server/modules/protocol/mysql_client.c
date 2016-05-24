@@ -2012,6 +2012,12 @@ static int route_by_statement(
 			/* Airproxy rejects malformed query (e.g. where 0 = 0) */
 		        if (config_connection_pool_enabled() && session->ses_reject_bad_query) {
 			    conn_proxy_reject_malformed_query(session);
+		            /* Airproxy maintains service rejected query counter */
+                            if (session->client != NULL &&
+                                session->client->service != NULL)
+		            {
+		                atomic_add(&session->client->service->conn_pool_stats.n_rejected_queries, 1);
+		            }
 		        }
                 }
                 else

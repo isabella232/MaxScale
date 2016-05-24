@@ -2261,7 +2261,7 @@ static bool route_single_stmt(
 	bool           	   succp          = false;
 	int                rlag_max       = MAX_RLAG_UNDEFINED;
 	backend_type_t     btype; /*< target backend type */
-        bool               malformed_delete = false; /* Airbnb Ruby SB check */
+	bool               reject_query = false; /* Airbnb Ruby SB check */
 
 	ss_dassert(querybuf->next == NULL); // The buffer must be contiguous.
 	ss_dassert(!GWBUF_IS_TYPE_UNDEFINED(querybuf));
@@ -2323,7 +2323,7 @@ static bool route_single_stmt(
 			
 		case MYSQL_COM_QUERY:
 			qtype = query_classifier_get_type(querybuf);
-			malformed_delete = query_classifier_check_blacklist_query(querybuf);
+			reject_query = query_classifier_check_blacklist_query(querybuf);
 			break;
 			
 		case MYSQL_COM_STMT_PREPARE:
@@ -2349,7 +2349,21 @@ static bool route_single_stmt(
 	} /**< switch by packet type */
 
 	/* Airproxy detects malformed delete query */
-	if (malformed_delete) {
+	if (reject_query) {
+	    char* query_str = modutil_get_query(querybuf);
+	    char* qtype_str = skygw_get_qtype_str(qtype);
+
+	    LOGIF(LE, (skygw_log_write_flush(
+	               LOGFILE_ERROR,
+	               "Error : connection proxy reject blacklisted query %s:%s: \"%s\" ",
+	               STRPACKETTYPE(packet_type),
+	               qtype_str,
+	               (query_str == NULL ? "(empty)" : query_str))));
+	    if (query_str)
+	        free(query_str);
+	    if (qtype_str)
+               free(qtype_str);
+
 	    spinlock_acquire(&rses->client_dcb->session->ses_lock);
 	    rses->client_dcb->session->ses_reject_bad_query = true;
 	    spinlock_release(&rses->client_dcb->session->ses_lock);
