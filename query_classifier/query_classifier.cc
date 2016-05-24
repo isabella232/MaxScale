@@ -1713,10 +1713,12 @@ static bool is_always_true_eq_condition(Item_cond *where)
  *
  * - Truncate table
  * - Delete/Update with single malformed condition such as "where 0 = 0"
+ * - Delete/Update without a where clause, i.e. global delete/update
  */
 bool query_classifier_check_blacklist_query(GWBUF* querybuf)
 {
   LEX* lex;
+  bool has_where = false;
 
   if (!query_is_parsed(querybuf))
     parse_query(querybuf);
@@ -1727,18 +1729,23 @@ bool query_classifier_check_blacklist_query(GWBUF* querybuf)
   if (lex->sql_command == SQLCOM_TRUNCATE)
     return true;
 
-  if (lex->sql_command != SQLCOM_DELETE || lex->sql_command != SQLCOM_UPDATE)
+  if (!(lex->sql_command == SQLCOM_DELETE || lex->sql_command == SQLCOM_UPDATE))
     return false;
 
   for (SELECT_LEX *clex = lex->all_selects_list; clex != NULL;
        clex = clex->next_select_in_list())
   {
     if (clex->where) {
+      has_where = true;
       /* check single equal condition that evaluates always true */
       if (is_always_true_eq_condition((Item_cond*)clex->where))
         return true;
     }
   }
+
+  /* prohibit mutation query with no where clause */
+  if (!has_where)
+    return true;
 
   return false;
 }
