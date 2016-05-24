@@ -2323,7 +2323,7 @@ static bool route_single_stmt(
 			
 		case MYSQL_COM_QUERY:
 			qtype = query_classifier_get_type(querybuf);
-			malformed_delete = query_classifier_check_malformed_query(querybuf);
+			malformed_delete = query_classifier_check_blacklist_query(querybuf);
 			break;
 			
 		case MYSQL_COM_STMT_PREPARE:
