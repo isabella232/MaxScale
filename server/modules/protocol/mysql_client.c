@@ -1655,7 +1655,7 @@ int gw_MySQLAccept(DCB *listener)
 
                 /* Airproxy maintains service connection pool stats */
                 if (listener->session->service != NULL) {
-                    listener->session->service->conn_pool_stats.n_conn_accepts++;
+                    atomic_add(&listener->session->service->conn_pool_stats.n_conn_accepts, 1);
                 }
 #if defined(SS_DEBUG)
                 LOGIF(LD, (skygw_log_write_flush(
@@ -1827,7 +1827,7 @@ static int gw_error_client_event(
 
         /* Airproxy maintains service connection pool stats */
         if (dcb->service != NULL) {
-            dcb->service->conn_pool_stats.n_client_errors++;
+            atomic_add(&dcb->service->conn_pool_stats.n_client_errors, 1);
         }
         /* Airproxy marks session in error or hungup such that its backend connection
          * will not return to connection pool and be reused */
@@ -1931,7 +1931,7 @@ gw_client_hangup_event(DCB *dcb)
 
         /* Airproxy maintains service connection pool stats */
         if (dcb->service != NULL) {
-            dcb->service->conn_pool_stats.n_client_hangups++;
+            atomic_add(&dcb->service->conn_pool_stats.n_client_hangups, 1);
         }
         /* Airproxy marks session in error or hungup such that its backend connection
          * will not return to connection pool and be reused */
