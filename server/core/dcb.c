@@ -3332,7 +3332,7 @@ void dcb_close_all_clients()
              * skip, and this is because housekeeper could not free embedded_thd
              * in parsing_info_done */
             DCB_SET_IN_HK_CLEANUP(dcb)
-            if (dcb->session != NULL)
+            if (dcb->session != NULL && dcb->service != NULL)
                 atomic_add(&dcb->service->conn_pool_stats.n_client_full_cleanups, 1);
             dcb_close(dcb);
             LOGIF(LE, (skygw_log_write_flush(
