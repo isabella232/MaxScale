@@ -1728,7 +1728,7 @@ global_defaults()
 	gateway.server_connection_pools = 0;
 	gateway.server_connection_pool_throttle = 25;
 	gateway.server_connection_pool_idle_timeout_min = 240; /* default 4 hours */
-	gateway.log_session_command_error = true;
+	gateway.log_session_command_error = false;
 	gateway.reject_blacklist_query = true;
 }
 
