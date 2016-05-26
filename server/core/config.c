@@ -1628,6 +1628,10 @@ int i;
 	{
 		gateway.log_session_command_error = config_truth_value((char*)value);
 	}
+	else if (strcmp(name, "reject_blacklist_query") == 0)
+	{
+		gateway.reject_blacklist_query = config_truth_value((char*)value);
+	}
 	else
 	{
 		for (i = 0; lognames[i].logname; i++)
@@ -1725,6 +1729,7 @@ global_defaults()
 	gateway.server_connection_pool_throttle = 25;
 	gateway.server_connection_pool_idle_timeout_min = 240; /* default 4 hours */
 	gateway.log_session_command_error = true;
+	gateway.reject_blacklist_query = true;
 }
 
 /**
@@ -2754,4 +2759,12 @@ config_server_connection_pool_throttle()
 bool config_log_session_command_error()
 {
     return gateway.log_session_command_error;
+}
+
+/**
+ * Return global parameter whether to reject blacklist query in Airbnb connection proxy.
+ */
+bool config_reject_blacklist_query()
+{
+    return gateway.reject_blacklist_query;
 }

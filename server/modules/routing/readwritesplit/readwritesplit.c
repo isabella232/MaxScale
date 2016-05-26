@@ -2323,7 +2323,8 @@ static bool route_single_stmt(
 			
 		case MYSQL_COM_QUERY:
 			qtype = query_classifier_get_type(querybuf);
-			reject_query = query_classifier_check_blacklist_query(querybuf);
+			if (config_reject_blacklist_query())
+			    reject_query = query_classifier_check_blacklist_query(querybuf);
 			break;
 			
 		case MYSQL_COM_STMT_PREPARE:
@@ -2348,7 +2349,7 @@ static bool route_single_stmt(
 			break;
 	} /**< switch by packet type */
 
-	/* Airproxy detects malformed delete query */
+	/* Airproxy rejects malformed or blacklisted query */
 	if (reject_query) {
 	    char* query_str = modutil_get_query(querybuf);
 	    char* qtype_str = skygw_get_qtype_str(qtype);
