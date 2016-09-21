@@ -32,20 +32,22 @@ Before building Airbnb MaxScale, make sure you have all prerequisite installed i
 
 The following builds a Debian release package. The release package name has an AIRBNB version number in it.
 
----
+```
 mkdir release_maxscale
 cd release_maxscale
 cmake /srv/dbproxy/MaxScale -DCMAKE_BUILD_TYPE=RelWithDebugInfo -DMYSQL_DIR=/srv/dbproxy/mariadb-10.0.20-linux-x86_64/include/mysql -DEMBEDDED_LIB=/srv/dbproxy/mariadb-10.0.20-linux-x86_64/lib/libmysqld.so -DMYSQLCLIENT_LIBRARIES=/srv/dbproxy/mariadb-10.0.20-linux-x86_64/lib/libmysqlclient.so -DERRMSG=/srv/dbproxy/mariadb-10.0.20-linux-x86_64/share/english/errmsg.sys -DBUILD_TESTS=Y -DWITH_SCRIPTS=Y -DPACKAGE=Y -DCMAKE_INSTALL_PREFIX=/srv/dbproxy
 make
 make package
----
+```
 
 For debug build, it is slightly different.
 
----
+```
 mkdir debug_maxscale
 cd debug_maxscale
 cmake /srv/dbproxy/src -DCMAKE_BUILD_TYPE=Debug -DMYSQL_DIR=/srv/dbproxy/mariadb-10.0.20-linux-x86_64/include/mysql -DEMBEDDED_LIB=/srv/dbproxy/mariadb-10.0.20-linux-x86_64/lib/libmysqld.so -DMYSQLCLIENT_LIBRARIES=/srv/dbproxy/mariadb-10.0.20-linux-x86_64/lib/libmysqlclient.so -DERRMSG=/srv/dbproxy/mariadb-10.0.20-linux-x86_64/share/english/errmsg.sys -DBUILD_TESTS=Y -DWITH_SCRIPTS=N -DCMAKE_INSTALL_PREFIX=$HOME/debug_maxscale
 make
 make install
----
+```
+
+For more information about Airbnb MaxScale, please read documentations.
