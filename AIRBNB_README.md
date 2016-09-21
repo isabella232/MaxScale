@@ -30,6 +30,8 @@ Airbnb MaxScale was forked off MaxScale 1.3 development branch. All Airbnb featu
 
 Before building Airbnb MaxScale, make sure you have all prerequisite installed in the build machine. For the sake of example, I have Airbnb Maxscale source in `/srv/dbproxy/MaxScale`, and I have dependency libraries installed in `/srv/dbproxy` as well.
 
+The following builds a Debian release package. The release package name has an AIRBNB version number in it.
+
 ---
 mkdir release_maxscale
 cd release_maxscale
