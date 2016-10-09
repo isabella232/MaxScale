@@ -1215,12 +1215,6 @@ static int gw_backend_hangup(DCB *dcb)
         /* dcb_close(dcb); */
         goto retblock;
     }
-#if defined(SS_DEBUG)
-    if (ses_state != SESSION_STATE_STOPPING)
-    {
-        MXS_ERROR("Backend hangup error handling.");
-    }
-#endif
 
     router->handleError(router_instance,
                         rsession,
@@ -1233,9 +1227,6 @@ static int gw_backend_hangup(DCB *dcb)
     /** There are no required backends available, close session. */
     if (!succp)
     {
-#if defined(SS_DEBUG)
-        MXS_ERROR("Backend hangup -> closing session.");
-#endif
         spinlock_acquire(&session->ses_lock);
         session->state = SESSION_STATE_STOPPING;
         spinlock_release(&session->ses_lock);
