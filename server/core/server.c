@@ -44,6 +44,7 @@
 #include <log_manager.h>
 #include <gw_ssl.h>
 #include <maxscale/alloc.h>
+#include <modules.h>
 
 static SPINLOCK server_spin = SPINLOCK_INIT;
 static SERVER *allServers = NULL;
@@ -62,18 +63,40 @@ static void server_parameter_free(SERVER_PARAM *tofree);
  * @return              The newly created server or NULL if an error occured
  */
 SERVER *
-server_alloc(char *servname, char *protocol, unsigned short port)
+server_alloc(char *servname, char *protocol, unsigned short port, char *authenticator,
+             char *authentication_options)
 {
+    GWAUTHENTICATOR *authfuncs = (GWAUTHENTICATOR *)load_module(authenticator, MODULE_AUTHENTICATOR);
+
+    if (authfuncs == NULL)
+    {
+        MXS_ERROR("Failed to load authenticator module '%s' for server at %s:%u",
+                  authenticator, servname, port);
+        return NULL;
+    }
+
+    void *auth_instance = NULL;
+
+    if (authfuncs->initialize &&
+        (auth_instance = authenticator_init(authfuncs, authentication_options)) == NULL)
+    {
+        MXS_ERROR("Failed to initialize authenticator module '%s' for server at %s:%u",
+                 authenticator, servname, port);
+        return NULL;
+    }
+
     servname = MXS_STRNDUP(servname, MAX_SERVER_NAME_LEN);
     protocol = MXS_STRDUP(protocol);
+    authenticator = MXS_STRDUP(authenticator);
 
     SERVER *server = (SERVER *)MXS_CALLOC(1, sizeof(SERVER));
 
-    if (!servname || !protocol || !server)
+    if (!servname || !protocol || !server || !authenticator)
     {
         MXS_FREE(servname);
         MXS_FREE(protocol);
         MXS_FREE(server);
+        MXS_FREE(authenticator);
         return NULL;
     }
 
@@ -83,7 +106,8 @@ server_alloc(char *servname, char *protocol, unsigned short port)
 #endif
     server->name = servname;
     server->protocol = protocol;
-    server->authenticator = NULL;
+    server->authenticator = authenticator;
+    server->auth_instance = auth_instance;
     server->port = port;
     server->status = SERVER_RUNNING;
     server->node_id = -1;

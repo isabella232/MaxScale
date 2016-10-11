@@ -36,6 +36,7 @@
 #include <log_manager.h>
 #include <maxscale/alloc.h>
 #include <users.h>
+#include <modules.h>
 
 static RSA *rsa_512 = NULL;
 static RSA *rsa_1024 = NULL;
@@ -49,13 +50,33 @@ static RSA *tmp_rsa_callback(SSL *s, int is_export, int keylength);
  * @param address       The address to listen with
  * @param port          The port to listen on
  * @param authenticator Name of the authenticator to be used
+ * @param options       Authenticator options
  * @param ssl           SSL configuration
  * @return      New listener object or NULL if unable to allocate
  */
 SERV_LISTENER *
 listener_alloc(struct service* service, char* name, char *protocol, char *address,
-               unsigned short port, char *authenticator, SSL_LISTENER *ssl)
+               unsigned short port, char *authenticator, char* options, SSL_LISTENER *ssl)
 {
+    GWAUTHENTICATOR *authfuncs = (GWAUTHENTICATOR *)load_module(authenticator, MODULE_AUTHENTICATOR);
+
+    if (authfuncs == NULL)
+    {
+        MXS_ERROR("Failed to load authenticator module '%s' for listener '%s'",
+                  authenticator, name);
+        return NULL;
+    }
+
+    void *auth_instance = NULL;
+
+    if (authfuncs->initialize &&
+        (auth_instance = authenticator_init(authfuncs, options)) == NULL)
+    {
+        MXS_ERROR("Failed to initialize authenticator module '%s' for listener '%s'",
+                  authenticator, name);
+        return NULL;
+    }
+
     if (address)
     {
         address = MXS_STRDUP(address);
@@ -98,6 +119,7 @@ listener_alloc(struct service* service, char* name, char *protocol, char *addres
     proto->users = NULL;
     proto->resources = NULL;
     proto->next = NULL;
+    proto->auth_instance = auth_instance;
     spinlock_init(&proto->lock);
 
     return proto;
