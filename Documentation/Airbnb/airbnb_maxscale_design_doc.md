@@ -56,7 +56,7 @@ The connection pooling dbproxy receives and parses the entire result set for the
 
 Note that multi-resultset is currently not supported. Multi-resultset is used by MySQL stored procedure, which is not used in production at Airbnb. It should not be hard to extend to support multi-resultset.
 
-## Pratical Design Choices
+## Practical Design Choices
 
 ### A single worker thread model
 
@@ -83,7 +83,7 @@ Each router service listens to new client connections on its dedicated service p
 
 ### Allow a single user to use a production Maxscale dbproxy service
 
-We leverage Maxscale server persistent connections for connection pool management. One criterion for pairing a pooling backend connection with a client session is that the backend connection was authenticated for the same user as the client session. Therefore, it'd be bad to mix `backend_dcb` that belong to different users in the same server connection pool. In Airbnb applications, an application user name is used to connect production databases. A single designated user makes sense for our production enviornment, and therefore we chose to restrict an Aribnb MaxScale server to a dedicated user.
+We leverage Maxscale server persistent connections for connection pool management. One criterion for pairing a pooling backend connection with a client session is that the backend connection was authenticated for the same user as the client session. Therefore, it'd be bad to mix `backend_dcb` that belong to different users in the same server connection pool. In Airbnb applications, an application user name is used to connect production databases. A single designated user makes sense for our production environment, and therefore we chose to restrict an Aribnb MaxScale server to a dedicated user.
 
 It is possible to support multiple connection pools for different users. However, even in that mode, it would be good to have a limited set of users that are allowed to connect to the same database proxy.
 
